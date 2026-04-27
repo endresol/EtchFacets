@@ -1,0 +1,428 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * EtchFacets Facet Renderer
+ *
+ * Handles shortcode registration and PHP render helpers for facets.
+ *
+ * @package EtchFacets
+ */
+
+class EtchFacets_Facet_Renderer {
+
+	/**
+	 * Register shortcodes.
+	 *
+	 * @return void
+	 */
+	public function init(): void {
+		add_shortcode( 'etchfacets_listing', [ $this, 'render_listing_shortcode' ] );
+		add_shortcode( 'etchfacets_facet', [ $this, 'render_facet_shortcode' ] );
+		add_shortcode( 'etchfacets_reset', [ $this, 'render_reset_shortcode' ] );
+		add_shortcode( 'etchfacets_results_count', [ $this, 'render_results_count_shortcode' ] );
+	}
+
+	/**
+	 * Render the [etchfacets_listing] shortcode.
+	 *
+	 * Outputs a listing container with query config as a data attribute
+	 * and an initial server-rendered loop for progressive enhancement.
+	 *
+	 * @param array|string $atts    Shortcode attributes.
+	 * @param string|null  $content Shortcode content (unused).
+	 * @return string The rendered HTML.
+	 */
+	public function render_listing_shortcode( $atts, ?string $content = null ): string {
+		$atts = shortcode_atts( [
+			'post_type'      => 'post',
+			'posts_per_page' => 12,
+			'orderby'        => 'date',
+			'order'          => 'DESC',
+			'class'          => '',
+			'id'             => 'main',
+		], $atts, 'etchfacets_listing' );
+
+		$post_type      = sanitize_key( $atts['post_type'] );
+		$posts_per_page = absint( $atts['posts_per_page'] );
+		$posts_per_page = min( max( $posts_per_page, 1 ), 100 );
+		$orderby        = sanitize_key( $atts['orderby'] );
+		$order          = in_array( strtoupper( $atts['order'] ), [ 'ASC', 'DESC' ], true )
+			? strtoupper( $atts['order'] )
+			: 'DESC';
+		$extra_class    = sanitize_html_class( $atts['class'] );
+		$template_id    = sanitize_key( $atts['id'] );
+
+		$query_config = [
+			'post_type'      => $post_type,
+			'posts_per_page' => $posts_per_page,
+			'orderby'        => $orderby,
+			'order'          => $order,
+		];
+
+		// Run the initial query for progressive enhancement.
+		$query = new WP_Query( $query_config );
+
+		$classes = 'etchfacets-template';
+		if ( $extra_class ) {
+			$classes .= ' ' . $extra_class;
+		}
+
+		$html  = '<div class="' . esc_attr( $classes ) . '"';
+		$html .= ' data-etchfacets-query="' . esc_attr( wp_json_encode( $query_config ) ) . '"';
+		$html .= ' data-etchfacets-id="' . esc_attr( $template_id ) . '">';
+
+		if ( $query->have_posts() ) {
+			while ( $query->have_posts() ) {
+				$query->the_post();
+
+				$post_id = get_the_ID();
+				$html   .= '<article class="etchfacets-item" id="post-' . intval( $post_id ) . '">';
+				$html   .= '<h2>' . esc_html( get_the_title() ) . '</h2>';
+
+				if ( has_post_thumbnail() ) {
+					$html .= '<div class="etchfacets-thumbnail">' . get_the_post_thumbnail( $post_id, 'medium' ) . '</div>';
+				}
+
+				$html .= '<div class="etchfacets-excerpt">' . wp_kses_post( get_the_excerpt() ) . '</div>';
+				$html .= '</article>';
+			}
+			wp_reset_postdata();
+		} else {
+			$html .= '<div class="etchfacets-no-results">' . esc_html__( 'No results found.', 'etchfacets' ) . '</div>';
+		}
+
+		$html .= '</div>';
+
+		return $html;
+	}
+
+	/**
+	 * Render the [etchfacets_facet] shortcode.
+	 *
+	 * Outputs a facet container with the appropriate UI type and data attributes.
+	 *
+	 * @param array|string $atts    Shortcode attributes.
+	 * @param string|null  $content Shortcode content (unused).
+	 * @return string The rendered HTML.
+	 */
+	public function render_facet_shortcode( $atts, ?string $content = null ): string {
+		$atts = shortcode_atts( [
+			'name'        => '',
+			'source'      => '',
+			'logic'       => 'or',
+			'type'        => 'checkboxes',
+			'label'       => '',
+			'show_counts' => 'true',
+			'class'       => '',
+		], $atts, 'etchfacets_facet' );
+
+		$name        = sanitize_key( $atts['name'] );
+		$source      = sanitize_text_field( $atts['source'] );
+		$logic       = sanitize_key( $atts['logic'] );
+		$type        = sanitize_key( $atts['type'] );
+		$label       = sanitize_text_field( $atts['label'] );
+		$show_counts = filter_var( $atts['show_counts'], FILTER_VALIDATE_BOOLEAN );
+		$extra_class = sanitize_html_class( $atts['class'] );
+
+		if ( ! $name || ! $source ) {
+			return '';
+		}
+
+		$classes = 'etchfacets-facet';
+		if ( $extra_class ) {
+			$classes .= ' ' . $extra_class;
+		}
+
+		$html  = '<div class="' . esc_attr( $classes ) . '"';
+		$html .= ' data-etchfacet="' . esc_attr( $name ) . '"';
+		$html .= ' data-etchfacet-source="' . esc_attr( $source ) . '"';
+		$html .= ' data-etchfacet-logic="' . esc_attr( $logic ) . '">';
+
+		if ( $label ) {
+			$html .= '<h3 class="etchfacets-facet-label">' . esc_html( $label ) . '</h3>';
+		}
+
+		switch ( $type ) {
+			case 'search':
+				$html .= $this->render_search_input();
+				break;
+
+			case 'range':
+				$html .= $this->render_range_inputs( $source );
+				break;
+
+			case 'dropdown':
+				$html .= $this->render_dropdown( $source, $name, $show_counts );
+				break;
+
+			case 'radio':
+				$html .= $this->render_choices( $source, $show_counts, 'radio', $name );
+				break;
+
+			case 'checkboxes':
+			default:
+				$html .= $this->render_choices( $source, $show_counts, 'checkbox', $name );
+				break;
+		}
+
+		$html .= '</div>';
+
+		return $html;
+	}
+
+	/**
+	 * Render the [etchfacets_reset] shortcode.
+	 *
+	 * @param array|string $atts Shortcode attributes.
+	 * @return string The rendered HTML.
+	 */
+	public function render_reset_shortcode( $atts ): string {
+		$atts = shortcode_atts( [
+			'text' => 'Reset Filters',
+		], $atts, 'etchfacets_reset' );
+
+		$text = sanitize_text_field( $atts['text'] );
+
+		return '<button class="etchfacets-reset" type="button">' . esc_html( $text ) . '</button>';
+	}
+
+	/**
+	 * Render the [etchfacets_results_count] shortcode.
+	 *
+	 * @param array|string $atts Shortcode attributes.
+	 * @return string The rendered HTML.
+	 */
+	public function render_results_count_shortcode( $atts ): string {
+		return '<span class="etchfacets-results-count" data-etchfacets-total></span>';
+	}
+
+	/**
+	 * Render a search input for the search facet type.
+	 *
+	 * @return string The search input HTML.
+	 */
+	private function render_search_input(): string {
+		return '<input type="search" placeholder="' . esc_attr__( 'Search...', 'etchfacets' ) . '" class="etchfacets-search-input">';
+	}
+
+	/**
+	 * Render min/max number inputs for the range facet type.
+	 *
+	 * @param string $source The facet source (e.g., "meta_range:price").
+	 * @return string The range inputs HTML.
+	 */
+	private function render_range_inputs( string $source ): string {
+		global $wpdb;
+
+		$min = 0;
+		$max = 0;
+
+		// Parse meta key from source.
+		$parts = explode( ':', $source, 2 );
+		if ( count( $parts ) === 2 && in_array( $parts[0], [ 'meta', 'meta_range' ], true ) ) {
+			$meta_key = sanitize_key( $parts[1] );
+
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$range = $wpdb->get_row(
+				$wpdb->prepare(
+					"SELECT MIN( CAST( meta_value AS DECIMAL(20,2) ) ) AS min_val, MAX( CAST( meta_value AS DECIMAL(20,2) ) ) AS max_val FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value != ''",
+					$meta_key
+				)
+			);
+
+			if ( $range ) {
+				$min = (int) floor( (float) $range->min_val );
+				$max = (int) ceil( (float) $range->max_val );
+			}
+		}
+
+		$html  = '<div class="etchfacets-range-inputs">';
+		$html .= '<input type="number" class="etchfacet-min" placeholder="' . esc_attr__( 'Min', 'etchfacets' ) . '" min="' . esc_attr( (string) $min ) . '" max="' . esc_attr( (string) $max ) . '">';
+		$html .= '<span class="etchfacets-range-separator">—</span>';
+		$html .= '<input type="number" class="etchfacet-max" placeholder="' . esc_attr__( 'Max', 'etchfacets' ) . '" min="' . esc_attr( (string) $min ) . '" max="' . esc_attr( (string) $max ) . '">';
+		$html .= '</div>';
+
+		return $html;
+	}
+
+	/**
+	 * Render checkbox or radio choices for a facet.
+	 *
+	 * @param string $source      The facet source (e.g., "taxonomy:category").
+	 * @param bool   $show_counts Whether to show counts.
+	 * @param string $input_type  The input type: 'checkbox' or 'radio'.
+	 * @param string $facet_name  The facet name (used for radio input grouping).
+	 * @return string The choices HTML.
+	 */
+	private function render_choices( string $source, bool $show_counts, string $input_type, string $facet_name ): string {
+		$choices = $this->get_choices( $source );
+		$html    = '';
+
+		foreach ( $choices as $choice ) {
+			$html .= '<label class="etchfacets-' . esc_attr( $input_type ) . '">';
+			$html .= '<input type="' . esc_attr( $input_type ) . '"';
+			$html .= ' value="' . esc_attr( $choice['value'] ) . '"';
+			if ( $input_type === 'radio' ) {
+				$html .= ' name="' . esc_attr( $facet_name ) . '"';
+			}
+			$html .= '> ' . esc_html( $choice['label'] );
+
+			if ( $show_counts ) {
+				$html .= ' <span class="etchfacet-count">(' . intval( $choice['count'] ) . ')</span>';
+			}
+
+			$html .= '</label>';
+		}
+
+		return $html;
+	}
+
+	/**
+	 * Render a dropdown select for a facet.
+	 *
+	 * @param string $source      The facet source.
+	 * @param string $facet_name  The facet name.
+	 * @param bool   $show_counts Whether to show counts.
+	 * @return string The dropdown HTML.
+	 */
+	private function render_dropdown( string $source, string $facet_name, bool $show_counts ): string {
+		$choices = $this->get_choices( $source );
+
+		$html  = '<select name="' . esc_attr( $facet_name ) . '">';
+		$html .= '<option value="">' . esc_html__( 'All', 'etchfacets' ) . '</option>';
+
+		foreach ( $choices as $choice ) {
+			$label = esc_html( $choice['label'] );
+			if ( $show_counts ) {
+				$label .= ' (' . intval( $choice['count'] ) . ')';
+			}
+			$html .= '<option value="' . esc_attr( $choice['value'] ) . '">' . $label . '</option>';
+		}
+
+		$html .= '</select>';
+
+		return $html;
+	}
+
+	/**
+	 * Get available choices for a facet source.
+	 *
+	 * For taxonomy sources, retrieves terms via get_terms().
+	 * For meta sources, queries distinct meta values from the database.
+	 *
+	 * @param string $source The facet source (e.g., "taxonomy:category", "meta:color").
+	 * @return array Array of choices, each with 'value', 'label', and 'count' keys.
+	 */
+	private function get_choices( string $source ): array {
+		$parts = explode( ':', $source, 2 );
+		if ( count( $parts ) !== 2 ) {
+			return [];
+		}
+
+		$source_type = $parts[0];
+		$source_key  = $parts[1];
+
+		switch ( $source_type ) {
+			case 'taxonomy':
+				return $this->get_taxonomy_choices( sanitize_key( $source_key ) );
+
+			case 'meta':
+				return $this->get_meta_choices( sanitize_key( $source_key ) );
+
+			default:
+				return [];
+		}
+	}
+
+	/**
+	 * Get choices from a taxonomy.
+	 *
+	 * @param string $taxonomy The taxonomy name.
+	 * @return array Array of choices.
+	 */
+	private function get_taxonomy_choices( string $taxonomy ): array {
+		if ( ! taxonomy_exists( $taxonomy ) ) {
+			return [];
+		}
+
+		$terms = get_terms( [
+			'taxonomy'   => $taxonomy,
+			'hide_empty' => true,
+		] );
+
+		if ( is_wp_error( $terms ) ) {
+			return [];
+		}
+
+		$choices = [];
+		foreach ( $terms as $term ) {
+			$choices[] = [
+				'value' => $term->slug,
+				'label' => $term->name,
+				'count' => $term->count,
+			];
+		}
+
+		return $choices;
+	}
+
+	/**
+	 * Get choices from post meta values.
+	 *
+	 * @param string $meta_key The meta key to query.
+	 * @return array Array of choices.
+	 */
+	private function get_meta_choices( string $meta_key ): array {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$results = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT meta_value, COUNT(*) AS count FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON pm.post_id = p.ID WHERE pm.meta_key = %s AND pm.meta_value != '' AND p.post_status = 'publish' GROUP BY meta_value ORDER BY meta_value ASC",
+				$meta_key
+			)
+		);
+
+		if ( ! $results ) {
+			return [];
+		}
+
+		$choices = [];
+		foreach ( $results as $row ) {
+			$choices[] = [
+				'value' => $row->meta_value,
+				'label' => $row->meta_value,
+				'count' => (int) $row->count,
+			];
+		}
+
+		return $choices;
+	}
+}
+
+/**
+ * Render a facet via PHP.
+ *
+ * A global helper function for rendering facets directly in theme templates.
+ *
+ * @param string $name    The facet name.
+ * @param string $source  The facet source (e.g., "taxonomy:category").
+ * @param array  $options Optional. Additional options: type, logic, label, show_counts, class.
+ * @return void
+ */
+function etchfacets_display( string $name, string $source, array $options = [] ): void {
+	$renderer = new EtchFacets_Facet_Renderer();
+
+	$atts = array_merge( [
+		'name'        => $name,
+		'source'      => $source,
+		'type'        => 'checkboxes',
+		'logic'       => 'or',
+		'label'       => '',
+		'show_counts' => 'true',
+		'class'       => '',
+	], $options );
+
+	echo $renderer->render_facet_shortcode( $atts ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- output is escaped within render_facet_shortcode.
+}

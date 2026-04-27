@@ -1,0 +1,51 @@
+name: Build & attach release zip
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build clean plugin zip
+        run: |
+          set -euo pipefail
+          SLUG="etchfacets"
+          STAGING="$RUNNER_TEMP/$SLUG"
+          mkdir -p "$STAGING"
+
+          # Use rsync to copy only what should ship.
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.gitignore' \
+            --exclude='.gitattributes' \
+            --exclude='.DS_Store' \
+            --exclude='._*' \
+            --exclude='*.zip' \
+            --exclude='node_modules' \
+            --exclude='vendor' \
+            --exclude='IMPLEMENTATION_PLAN.md' \
+            --exclude='PLUGIN_REFERENCE.md' \
+            --exclude='DEPLOY.md' \
+            ./ "$STAGING/"
+
+          cd "$RUNNER_TEMP"
+          zip -rq "$SLUG.zip" "$SLUG"
+          ls -la "$SLUG.zip"
+
+      - name: Upload zip to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$TAG" "$RUNNER_TEMP/etchfacets.zip" \
+            --repo "${{ github.repository }}" \
+            --clobber

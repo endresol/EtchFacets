@@ -1,0 +1,97 @@
+/**
+ * EtchFacets — Base styles
+ *
+ * Minimal styles for facet functionality. Override in your
+ * Etch theme for custom look and feel.
+ */
+
+/* ── Loading state ── */
+.etchfacets-template.etchfacets-loading {
+	opacity: 0.4;
+	pointer-events: none;
+	transition: opacity 0.15s ease;
+}
+
+/* ── Ghost & hidden choices ── */
+.etchfacet-ghost {
+	opacity: 0.35;
+	pointer-events: none;
+}
+
+.etchfacet-hidden {
+	display: none;
+}
+
+/* ── Hierarchical tree ── */
+.etchfacets-hierarchy {
+	display: flex;
+	flex-direction: column;
+}
+
+.etchfacets-tree-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding: 0.35rem 0;
+}
+
+.etchfacets-tree-children {
+	padding-left: 1.25rem;
+	border-left: 1px solid var(--neutral-300, #d1d5db);
+	margin-left: 0.5rem;
+}
+
+.etchfacets-tree-children[hidden] {
+	display: none;
+}
+
+/* Toggle +/− button */
+.etchfacets-tree-toggle {
+	all: unset;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.25rem;
+	height: 1.25rem;
+	border-radius: 3px;
+	font-size: 0.875rem;
+	font-weight: 600;
+	line-height: 1;
+	color: var(--neutral-500, #6b7280);
+	border: 1px solid var(--neutral-300, #d1d5db);
+	flex-shrink: 0;
+	transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.etchfacets-tree-toggle:hover {
+	color: var(--neutral-900, #111827);
+	border-color: var(--neutral-400, #9ca3af);
+}
+
+.etchfacets-tree-toggle[aria-expanded="true"] {
+	color: var(--neutral-900, #111827);
+}
+
+/* ── Checkbox / radio labels ── */
+.etchfacets-checkbox {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	cursor: pointer;
+	font-size: 0.9375rem;
+}
+
+/* ── Count badge ── */
+.etchfacet-count {
+	color: var(--neutral-400, #9ca3af);
+	font-size: 0.8125rem;
+}
+
+/* ── No results ── */
+.etchfacets-no-results {
+	padding: 2rem 1rem;
+	text-align: center;
+	color: var(--neutral-500, #6b7280);
+}

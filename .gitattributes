@@ -1,0 +1,20 @@
+# Files excluded from `git archive` (and any tooling that respects export-ignore).
+# Keeps dev-only files out of release zips.
+
+/.github            export-ignore
+/.gitignore         export-ignore
+/.gitattributes     export-ignore
+/IMPLEMENTATION_PLAN.md export-ignore
+/PLUGIN_REFERENCE.md    export-ignore
+/DEPLOY.md          export-ignore
+/._*                export-ignore
+/**/._*             export-ignore
+/.DS_Store          export-ignore
+/**/.DS_Store       export-ignore
+
+# Normalize line endings
+* text=auto eol=lf
+*.php text eol=lf
+*.js  text eol=lf
+*.css text eol=lf
+*.md  text eol=lf
