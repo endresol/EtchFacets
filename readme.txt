@@ -2,9 +2,9 @@
 Contributors: endresol
 Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
-Tested up to: 6.7
+Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.1.0
+Stable tag: 0.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,3 +26,6 @@ URL-driven state.
 
 = 0.1.0 =
 * Initial release.
+
+= 0.1.1 =
+* Testing updates.
