@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.1.1
+Stable tag: 0.1.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -29,3 +29,10 @@ URL-driven state.
 
 = 0.1.1 =
 * Testing updates.
+
+= 0.1.2 =
+* Test build via local symlink.
+
+= 0.1.3 =
+* Fix: meta facets no longer trigger a 404 on singular pages — the main query
+  for a page/post is left untouched so only the listing loop is filtered.

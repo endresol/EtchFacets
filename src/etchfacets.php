@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Plugin Name: EtchFacets
  * Description: Faceted search engine for EtchWP
- * Version: 0.1.1
+ * Version: 0.1.3
  * Author: EtchFacets
  * Requires PHP: 8.1
  * Requires at least: 5.9
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ETCHFACETS_VERSION', '0.1.1' );
+define( 'ETCHFACETS_VERSION', '0.1.3' );
 define( 'ETCHFACETS_PLUGIN_FILE', __FILE__ );
 define( 'ETCHFACETS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETCHFACETS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -126,6 +126,15 @@ function etchfacets_filter_query( WP_Query $query ): void {
 		return;
 	}
 
+	// Never modify the main query when it resolves a singular page/post.
+	// The listing loop is rendered by a *secondary* query (e.g. an Etch query
+	// loop), which is still filtered below. Applying facet filters to the
+	// singular main query makes it return 0 posts, so WordPress concludes the
+	// page doesn't exist and serves a 404.
+	if ( $query->is_main_query() && $query->is_singular() ) {
+		return;
+	}
+
 	$parsed = etchfacets_parse_url_params();
 	if ( ! $parsed ) {
 		return;
@@ -216,6 +225,28 @@ function etchfacets_canvas_assets(): void {
 		'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 		'nonce'   => wp_create_nonce( 'etchfacets_nonce' ),
 	] );
+}
+
+add_action( 'wp_enqueue_scripts', 'etchfacets_builder_assets' );
+
+/**
+ * Enqueue the Etch builder Settings Bar control script.
+ *
+ * The Etch builder UI is a frontend application, so this must hook into
+ * `wp_enqueue_scripts` (not `admin_enqueue_scripts`). The script itself
+ * self-checks for `window.etchControls`, so it's safe to load on all
+ * frontend pages.
+ *
+ * @see https://docs.etchwp.com/integrations/controls
+ */
+function etchfacets_builder_assets(): void {
+	wp_enqueue_script(
+		'etchfacets-builder',
+		ETCHFACETS_PLUGIN_URL . 'assets/js/etchfacets-builder.js',
+		[],
+		ETCHFACETS_VERSION,
+		true
+	);
 }
 
 add_filter( 'etch_autocompletion_classes', 'etchfacets_register_classes' );

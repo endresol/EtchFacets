@@ -1,0 +1,10 @@
+{
+  "name": "etchfacets",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Build helpers for the EtchFacets WordPress plugin.",
+  "scripts": {
+    "build": "./build.sh",
+    "watch": "./build.sh --watch"
+  }
+}
