@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Plugin Name: EtchFacets
  * Description: Faceted search engine for EtchWP
- * Version: 0.1.3
+ * Version: 0.1.4
  * Author: EtchFacets
  * Requires PHP: 8.1
  * Requires at least: 5.9
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ETCHFACETS_VERSION', '0.1.3' );
+define( 'ETCHFACETS_VERSION', '0.1.4' );
 define( 'ETCHFACETS_PLUGIN_FILE', __FILE__ );
 define( 'ETCHFACETS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETCHFACETS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -106,10 +106,14 @@ function etchfacets_parse_url_params(): ?array {
 		return null;
 	}
 
+	// The listing's target post type (sent by the JS as _pt). Used to scope
+	// filtering to the listing query only.
+	$post_type = isset( $_GET['_pt'] ) ? sanitize_key( wp_unslash( $_GET['_pt'] ) ) : '';
+
 	$query_builder = new EtchFacets_Query_Builder();
 	$args          = $query_builder->build_query_args( $facets, $sources, $logic, [] );
 
-	$parsed = compact( 'facets', 'sources', 'logic', 'args' );
+	$parsed = compact( 'facets', 'sources', 'logic', 'args', 'post_type' );
 	return $parsed;
 }
 
@@ -140,12 +144,23 @@ function etchfacets_filter_query( WP_Query $query ): void {
 		return;
 	}
 
-	$args = $parsed['args'];
+	$args        = $parsed['args'];
+	$target_type = $parsed['post_type'] ?? '';
 
-	// Determine which taxonomies/meta keys our facets target.
-	// Only apply to queries that could match (by checking the query's post type
-	// supports the taxonomies we're filtering by).
+	// Determine this query's post type(s).
 	$query_post_type = $query->get( 'post_type' );
+
+	// Scope filtering to the listing's post type. Etch renders each card by
+	// running additional secondary queries (for related posts, meta, etc.);
+	// without this guard the facet meta_query would leak into those and blank
+	// out the card data. If the target post type is known, only filter queries
+	// for that post type.
+	if ( $target_type ) {
+		$query_types = (array) ( $query_post_type ?: 'post' );
+		if ( ! in_array( $target_type, $query_types, true ) ) {
+			return;
+		}
+	}
 
 	// If we have taxonomy filters, check if this query's post type uses those taxonomies.
 	if ( isset( $args['tax_query'] ) ) {

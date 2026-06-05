@@ -236,6 +236,13 @@
 				params.set(`_logic_${name}`, selections.logic[name] || 'or');
 			}
 
+			// Tell PHP which post type the listing targets so it only filters
+			// that query — not the secondary queries Etch runs to render each
+			// card's related/meta data.
+			if (baseQuery && baseQuery.post_type) {
+				params.set('_pt', baseQuery.post_type);
+			}
+
 			const qs = params.toString();
 			return window.location.pathname + (qs ? `?${qs}` : '');
 		}
