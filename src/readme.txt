@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.1.4
+Stable tag: 0.1.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,3 +41,8 @@ URL-driven state.
 * Fix: facet filters are now scoped to the listing's post type, so meta filters
   no longer leak into the secondary queries Etch runs to render each card —
   cards keep their meta data (country, region, etc.) when meta-filtering.
+
+= 0.1.5 =
+* Fix: the release zip no longer strips the bundled Parsedown library, which
+  caused a fatal "Class Parsedown not found" during update checks. The release
+  workflow no longer excludes the plugin-update-checker vendor directory.

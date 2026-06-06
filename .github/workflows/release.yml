@@ -31,7 +31,6 @@ jobs:
             --exclude='._*' \
             --exclude='*.zip' \
             --exclude='node_modules' \
-            --exclude='vendor' \
             ./src/ "$STAGING/"
 
           cd "$RUNNER_TEMP"
