@@ -173,6 +173,22 @@
 				const facetEl = document.querySelector(`[data-etchfacet="${name}"]`);
 				if (!facetEl) continue;
 
+				// meta_range facets return { min, max } bounds, not a choices array —
+				// sync the range/slider inputs' bounds and move on. Leaving this
+				// unhandled would call .forEach on a plain object and throw, aborting
+				// the rest of updateCounts() (and the total-count update that follows
+				// it in the caller) for every facet processed after this one.
+				if (!Array.isArray(choices)) {
+					if (choices && typeof choices.min !== 'undefined' && typeof choices.max !== 'undefined') {
+						[facetEl.querySelector('.etchfacet-min'), facetEl.querySelector('.etchfacet-max')].forEach((input) => {
+							if (!input) return;
+							input.min = choices.min;
+							input.max = choices.max;
+						});
+					}
+					continue;
+				}
+
 				choices.forEach((choice) => {
 					if (choice.value === undefined) return;
 
