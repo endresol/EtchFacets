@@ -498,12 +498,19 @@
 					input.value = '';
 				});
 
-				el.querySelectorAll('input[type="range"], input[type="number"]').forEach((input) => {
+				// Range/slider/date facet bounds. Matched by class rather than
+				// input type — .etchfacet-min/-max can be number, range, or
+				// date inputs (see FACETS.md), and a date input left with a
+				// stale value would otherwise never get cleared, silently
+				// pinning the facet active even after a reset.
+				el.querySelectorAll('.etchfacet-min, .etchfacet-max').forEach((input) => {
 					if (input.hasAttribute('data-default')) {
 						input.value = input.getAttribute('data-default');
+					} else if (input.type === 'date') {
+						input.value = '';
 					} else if (input.classList.contains('etchfacet-min')) {
 						input.value = input.min || 0;
-					} else if (input.classList.contains('etchfacet-max')) {
+					} else {
 						input.value = input.max || 0;
 					}
 				});
