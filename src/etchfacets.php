@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Plugin Name: EtchFacets
  * Description: Faceted search engine for EtchWP
- * Version: 0.1.7
+ * Version: 0.1.8
  * Author: EtchFacets
  * Requires PHP: 8.1
  * Requires at least: 5.9
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ETCHFACETS_VERSION', '0.1.7' );
+define( 'ETCHFACETS_VERSION', '0.1.8' );
 define( 'ETCHFACETS_PLUGIN_FILE', __FILE__ );
 define( 'ETCHFACETS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETCHFACETS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -102,7 +102,14 @@ function etchfacets_parse_url_params(): ?array {
 		$logic[ $facet_name ]   = sanitize_key( $_GET[ '_logic_' . $facet_name ] ?? 'or' );
 	}
 
-	if ( empty( $facets ) ) {
+	// Pagination — parsed independently of facets so a bare page-N request
+	// (no active filters) still gets its 'paged' arg applied below.
+	$page = isset( $_GET['_page'] ) ? absint( $_GET['_page'] ) : 1;
+	if ( $page < 1 ) {
+		$page = 1;
+	}
+
+	if ( empty( $facets ) && $page <= 1 ) {
 		return null;
 	}
 
@@ -113,7 +120,7 @@ function etchfacets_parse_url_params(): ?array {
 	$query_builder = new EtchFacets_Query_Builder();
 	$args          = $query_builder->build_query_args( $facets, $sources, $logic, [] );
 
-	$parsed = compact( 'facets', 'sources', 'logic', 'args', 'post_type' );
+	$parsed = compact( 'facets', 'sources', 'logic', 'args', 'post_type', 'page' );
 	return $parsed;
 }
 
@@ -199,6 +206,10 @@ function etchfacets_filter_query( WP_Query $query ): void {
 
 	if ( isset( $args['author__in'] ) ) {
 		$query->set( 'author__in', $args['author__in'] );
+	}
+
+	if ( ! empty( $parsed['page'] ) && $parsed['page'] > 1 ) {
+		$query->set( 'paged', $parsed['page'] );
 	}
 }
 

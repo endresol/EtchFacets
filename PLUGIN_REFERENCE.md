@@ -190,6 +190,9 @@ JS auto-updates these with `(N)` after each filter.
 | `.etchfacets-tree-item` | Developer | Single item in hierarchy |
 | `.etchfacets-tree-toggle` | Developer | Expand/collapse button (+/−) |
 | `.etchfacets-tree-children` | Developer | Child items container |
+| `.etchfacets-pagination-prev` / `-next` | Developer | Prev/Next pager buttons — auto-disabled at first/last page |
+| `.etchfacets-pagination-status` | Developer | Auto-populated with `Page X of Y` |
+| `.etchfacets-load-more` | Developer | Appends the next page instead of replacing the listing; auto-disabled (with `.etchfacets-load-more--exhausted`) once exhausted |
 
 ---
 

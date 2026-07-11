@@ -74,6 +74,10 @@
 		// Active AbortController for cancelling in-flight requests.
 		let currentController = null;
 
+		// Current page number, used to redraw pagination status after each fetch.
+		let currentPage = 1;
+		let maxPages    = 1;
+
 		// ---------------------------------------------------------------------
 		// Selection collection
 		// ---------------------------------------------------------------------
@@ -241,7 +245,7 @@
 		 * Includes _src_ and _logic_ params so the PHP pre_get_posts hook
 		 * knows how to filter the query.
 		 */
-		function buildFilterUrl() {
+		function buildFilterUrl(page = 1) {
 			const selections = collectSelections();
 			const params     = new URLSearchParams();
 
@@ -259,6 +263,10 @@
 				params.set('_pt', baseQuery.post_type);
 			}
 
+			if (page > 1) {
+				params.set('_page', page);
+			}
+
 			const qs = params.toString();
 			return window.location.pathname + (qs ? `?${qs}` : '');
 		}
@@ -266,12 +274,16 @@
 		/**
 		 * Update the browser URL (without the _src_ and _logic_ params — keep it clean).
 		 */
-		function updateUrl() {
+		function updateUrl(page = 1) {
 			const selections = collectSelections();
 			const params     = new URLSearchParams();
 
 			for (const [name, values] of Object.entries(selections.facets)) {
 				params.set(`_${name}`, values.join(','));
+			}
+
+			if (page > 1) {
+				params.set('_page', page);
 			}
 
 			const qs     = params.toString();
@@ -359,6 +371,8 @@
 		// ---------------------------------------------------------------------
 
 		function fetchResults(page = 1) {
+			currentPage = page;
+
 			// Cancel any in-flight request.
 			if (currentController) {
 				currentController.abort();
@@ -370,7 +384,7 @@
 			document.dispatchEvent(new CustomEvent('etchfacets:before-refresh'));
 
 			// Build the filtered page URL (Etch renders it via pre_get_posts).
-			const filterUrl = buildFilterUrl();
+			const filterUrl = buildFilterUrl(page);
 
 			// Fetch the actual page so Etch renders the listing with its own templates.
 			fetch(filterUrl, {
@@ -392,7 +406,7 @@
 					}
 
 					// Update the browser URL (clean version without _src_ params).
-					updateUrl();
+					updateUrl(page);
 
 					// Remove loading state.
 					template.classList.remove('etchfacets-loading');
@@ -445,6 +459,9 @@
 						totalElements.forEach((el) => {
 							el.textContent = response.data.total;
 						});
+
+						maxPages = response.data.max_pages || 1;
+						updatePaginationUi();
 					}
 				})
 				.catch(() => {
@@ -479,6 +496,121 @@
 				});
 			});
 		}
+
+		/**
+		 * Hand-built Prev/Next pager — an alternative to the numbered
+		 * page-numbers links attachPaginationListeners() supports.
+		 * Markup: .etchfacets-pagination-prev / -next (buttons) and an
+		 * optional .etchfacets-pagination-status (text) sharing a common
+		 * ancestor. Multiple pager widgets on one page are all kept in sync.
+		 */
+		const paginationPrevButtons   = document.querySelectorAll('.etchfacets-pagination-prev');
+		const paginationNextButtons   = document.querySelectorAll('.etchfacets-pagination-next');
+		const paginationStatusEls     = document.querySelectorAll('.etchfacets-pagination-status');
+		const loadMoreButtons         = document.querySelectorAll('.etchfacets-load-more');
+
+		function updatePaginationUi() {
+			paginationStatusEls.forEach((el) => {
+				el.textContent = `Page ${currentPage} of ${maxPages}`;
+			});
+			paginationPrevButtons.forEach((btn) => {
+				btn.disabled = currentPage <= 1;
+			});
+			paginationNextButtons.forEach((btn) => {
+				btn.disabled = currentPage >= maxPages;
+			});
+			loadMoreButtons.forEach((btn) => {
+				const exhausted = currentPage >= maxPages;
+				btn.disabled = exhausted;
+				btn.classList.toggle('etchfacets-load-more--exhausted', exhausted);
+			});
+		}
+
+		/**
+		 * Load More — fetches the next page and appends it to the existing
+		 * results instead of replacing them (unlike fetchResults(), which
+		 * always replaces .etchfacets-template's content). Markup:
+		 * .etchfacets-load-more (button). Reuses the same posts-per-page
+		 * batch size configured on the template via data-etchfacets-posts-per-page.
+		 */
+		function loadMore() {
+			if (currentPage >= maxPages) return;
+			const nextPage = currentPage + 1;
+
+			if (currentController) {
+				currentController.abort();
+			}
+			currentController = new AbortController();
+
+			template.classList.add('etchfacets-loading');
+			document.dispatchEvent(new CustomEvent('etchfacets:before-refresh'));
+
+			const filterUrl = buildFilterUrl(nextPage);
+
+			fetch(filterUrl, {
+				method: 'GET',
+				headers: { 'X-EtchFacets': '1' },
+				signal: currentController.signal,
+			})
+				.then((res) => res.text())
+				.then((html) => {
+					const parser      = new DOMParser();
+					const doc         = parser.parseFromString(html, 'text/html');
+					const newTemplate = doc.querySelector('.etchfacets-template');
+
+					if (newTemplate) {
+						// Append each fetched node instead of replacing existing content.
+						Array.from(newTemplate.childNodes).forEach((node) => {
+							template.appendChild(node);
+						});
+					}
+
+					currentPage = nextPage;
+					updateUrl(currentPage);
+					template.classList.remove('etchfacets-loading');
+
+					document.dispatchEvent(
+						new CustomEvent('etchfacets:loaded', {
+							detail: { page: currentPage, appended: true },
+						})
+					);
+
+					// Counts (and max_pages, via updatePaginationUi()) still
+					// reflect the whole filtered set, not just what's loaded.
+					fetchCounts();
+				})
+				.catch((err) => {
+					if (err.name === 'AbortError') return;
+					template.classList.remove('etchfacets-loading');
+					document.dispatchEvent(new CustomEvent('etchfacets:error'));
+					console.error('EtchFacets: load more failed', err);
+				});
+		}
+
+		loadMoreButtons.forEach((btn) => {
+			btn.addEventListener('click', (e) => {
+				e.preventDefault();
+				loadMore();
+			});
+		});
+
+		paginationPrevButtons.forEach((btn) => {
+			btn.addEventListener('click', (e) => {
+				e.preventDefault();
+				if (currentPage <= 1) return;
+				fetchResults(currentPage - 1);
+				template.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			});
+		});
+
+		paginationNextButtons.forEach((btn) => {
+			btn.addEventListener('click', (e) => {
+				e.preventDefault();
+				if (currentPage >= maxPages) return;
+				fetchResults(currentPage + 1);
+				template.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			});
+		});
 
 		// ---------------------------------------------------------------------
 		// Clear all inputs

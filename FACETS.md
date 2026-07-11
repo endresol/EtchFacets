@@ -278,6 +278,56 @@ Things you'll usually drop on the page along with facets:
 
 ---
 
+## Pagination
+
+Two hand-built markup patterns, both driven by the same page state
+(`posts_per_page` from the listing container, `paged` on the query). Pick
+one per page — combining both against the same listing works but produces
+confusing UX (Prev after a Load More click drops the appended posts, since
+Prev/Next replace the listing rather than append to it).
+
+### Prev / Next pager
+
+```html
+<div class="etchfacets-pagination">
+    <button class="etchfacets-pagination-prev" type="button">Previous</button>
+    <span class="etchfacets-pagination-status"></span>
+    <button class="etchfacets-pagination-next" type="button">Next</button>
+</div>
+```
+
+- `.etchfacets-pagination-prev` / `-next` — buttons; auto-disabled at the
+  first/last page.
+- `.etchfacets-pagination-status` — auto-populated with `Page X of Y`.
+- Replaces the listing's contents with the requested page (same behavior
+  as a facet change).
+
+Numbered links are also supported without any of the above markup — any
+`<a class="page-numbers">` (e.g. from `the_posts_pagination()`) or
+`.etchfacets-pagination a` inside the listing container gets its clicks
+intercepted automatically; the page number is parsed from `?paged=N` or
+`/page/N/` in the link's `href`.
+
+### Load More
+
+```html
+<button class="etchfacets-load-more" type="button">Load more</button>
+```
+
+Fetches the next page and **appends** it to the existing listing instead
+of replacing it. Batch size is the listing's `posts_per_page`. Auto-disables
+(and gets the `etchfacets-load-more--exhausted` class) once every post has
+been loaded.
+
+### Shared behavior
+
+- Any facet change, or `[etchfacets_reset]`, resets back to page 1 and
+  clears anything a Load More click had appended.
+- The clean bookmarkable URL includes `_page=N` once past page 1
+  (e.g. `?_category=design&_page=2`).
+
+---
+
 ## URL State
 
 Active facets are reflected in the URL so selections are bookmarkable and
