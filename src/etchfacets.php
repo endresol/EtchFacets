@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Plugin Name: EtchFacets
  * Description: Faceted search engine for EtchWP
- * Version: 0.1.8
+ * Version: 0.2.0
  * Author: EtchFacets
  * Requires PHP: 8.1
  * Requires at least: 5.9
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ETCHFACETS_VERSION', '0.1.8' );
+define( 'ETCHFACETS_VERSION', '0.2.0' );
 define( 'ETCHFACETS_PLUGIN_FILE', __FILE__ );
 define( 'ETCHFACETS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETCHFACETS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -197,7 +197,20 @@ function etchfacets_filter_query( WP_Query $query ): void {
 
 	if ( isset( $args['meta_query'] ) ) {
 		$existing = $query->get( 'meta_query' ) ?: [];
-		$query->set( 'meta_query', array_merge( $existing, $args['meta_query'] ) );
+
+		// Group rather than flat-merge: a flat merge would fold the facet
+		// clauses into an existing top-level `relation => OR`, which would
+		// loosen (not narrow) the query — e.g. the map bbox would become an
+		// OR branch and leak in posts outside the viewport.
+		if ( ! empty( $existing ) ) {
+			$query->set( 'meta_query', [
+				'relation' => 'AND',
+				$existing,
+				$args['meta_query'],
+			] );
+		} else {
+			$query->set( 'meta_query', $args['meta_query'] );
+		}
 	}
 
 	if ( isset( $args['s'] ) ) {
@@ -206,6 +219,14 @@ function etchfacets_filter_query( WP_Query $query ): void {
 
 	if ( isset( $args['author__in'] ) ) {
 		$query->set( 'author__in', $args['author__in'] );
+	}
+
+	if ( isset( $args['orderby'] ) ) {
+		$query->set( 'orderby', $args['orderby'] );
+	}
+
+	if ( isset( $args['order'] ) ) {
+		$query->set( 'order', $args['order'] );
 	}
 
 	if ( ! empty( $parsed['page'] ) && $parsed['page'] > 1 ) {
@@ -231,6 +252,44 @@ function etchfacets_enqueue_assets(): void {
 		'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 		'nonce'   => wp_create_nonce( 'etchfacets_nonce' ),
 	] );
+
+	wp_enqueue_style(
+		'etchfacets',
+		ETCHFACETS_PLUGIN_URL . 'assets/css/etchfacets.css',
+		[],
+		ETCHFACETS_VERSION
+	);
+
+	etchfacets_enqueue_map_assets();
+}
+
+/**
+ * Enqueue the Google Maps facet module and its config.
+ *
+ * The small module is always loaded; it self-exits when no `.etchfacets-map`
+ * element exists and only pulls in the (heavy) Google Maps API when a map is
+ * actually present on the page.
+ */
+function etchfacets_enqueue_map_assets(): void {
+	wp_enqueue_script(
+		'etchfacets-map',
+		ETCHFACETS_PLUGIN_URL . 'assets/js/etchfacets-map.js',
+		[ 'etchfacets' ],
+		ETCHFACETS_VERSION,
+		true
+	);
+
+	wp_localize_script( 'etchfacets-map', 'etchfacetsMapConfig', [
+		'ajaxUrl'    => admin_url( 'admin-ajax.php' ),
+		'nonce'      => wp_create_nonce( 'etchfacets_nonce' ),
+		/**
+		 * Filter the Google Maps API key used by the map facet.
+		 *
+		 * @param string $api_key The resolved API key.
+		 */
+		'apiKey'     => apply_filters( 'etchfacets/map/api_key', get_option( 'etchfacets_gmaps_key', '' ) ),
+		'maxMarkers' => (int) apply_filters( 'etchfacets/map/max_markers', 500 ),
+	] );
 }
 
 add_action( 'etch/canvas/enqueue_assets', 'etchfacets_canvas_assets' );
@@ -251,6 +310,15 @@ function etchfacets_canvas_assets(): void {
 		'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 		'nonce'   => wp_create_nonce( 'etchfacets_nonce' ),
 	] );
+
+	wp_enqueue_style(
+		'etchfacets',
+		ETCHFACETS_PLUGIN_URL . 'assets/css/etchfacets.css',
+		[],
+		ETCHFACETS_VERSION
+	);
+
+	etchfacets_enqueue_map_assets();
 }
 
 add_action( 'wp_enqueue_scripts', 'etchfacets_builder_assets' );
@@ -290,5 +358,87 @@ function etchfacets_register_classes( array $classes ): array {
 		'etchfacet-count',
 		'etchfacet-ghost',
 		'etchfacet-hidden',
+		'etchfacets-map',
+		'etchfacets-map--loading',
+		'etchfacets-map--error',
+		'etchfacets-map-info',
+		'etchfacets-active-filters',
+		'etchfacets-active-filter',
+		'etchfacets-active-filter-text',
+		'etchfacets-active-filter-remove',
+		'etchfacets-range-reset',
 	] );
+}
+
+add_action( 'admin_menu', 'etchfacets_register_settings_page' );
+
+/**
+ * Register the EtchFacets settings page under Settings.
+ */
+function etchfacets_register_settings_page(): void {
+	add_options_page(
+		__( 'EtchFacets', 'etchfacets' ),
+		__( 'EtchFacets', 'etchfacets' ),
+		'manage_options',
+		'etchfacets',
+		'etchfacets_render_settings_page'
+	);
+}
+
+add_action( 'admin_init', 'etchfacets_register_settings' );
+
+/**
+ * Register settings, sections and fields.
+ */
+function etchfacets_register_settings(): void {
+	register_setting( 'etchfacets_settings', 'etchfacets_gmaps_key', [
+		'type'              => 'string',
+		'sanitize_callback' => 'sanitize_text_field',
+		'default'           => '',
+	] );
+
+	add_settings_section(
+		'etchfacets_map_section',
+		__( 'Map facet', 'etchfacets' ),
+		function () {
+			echo '<p>' . esc_html__( 'Settings for the Google Maps viewport facet.', 'etchfacets' ) . '</p>';
+		},
+		'etchfacets'
+	);
+
+	add_settings_field(
+		'etchfacets_gmaps_key',
+		__( 'Google Maps API key', 'etchfacets' ),
+		function () {
+			$value = get_option( 'etchfacets_gmaps_key', '' );
+			printf(
+				'<input type="text" name="etchfacets_gmaps_key" value="%s" class="regular-text" autocomplete="off">',
+				esc_attr( $value )
+			);
+			echo '<p class="description">' . esc_html__( 'A Google Maps JavaScript API key with the Maps JavaScript API enabled.', 'etchfacets' ) . '</p>';
+		},
+		'etchfacets',
+		'etchfacets_map_section'
+	);
+}
+
+/**
+ * Render the settings page wrapper.
+ */
+function etchfacets_render_settings_page(): void {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
+	?>
+	<div class="wrap">
+		<h1><?php echo esc_html__( 'EtchFacets', 'etchfacets' ); ?></h1>
+		<form action="options.php" method="post">
+			<?php
+			settings_fields( 'etchfacets_settings' );
+			do_settings_sections( 'etchfacets' );
+			submit_button();
+			?>
+		</form>
+	</div>
+	<?php
 }

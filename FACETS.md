@@ -40,6 +40,8 @@ selected values. Between facets the relation is always **AND**.
 | `author`            | Posts by author ID(s)       | checkboxes / dropdown | Values are author IDs                  |
 | `date`              | Posts within a date range   | range         | Values = `[after, before]`, `YYYY-MM-DD`       |
 | `post_type`         | Restrict to post types      | checkboxes / dropdown | Values are post type slugs             |
+| `geo:{lat},{lng}`   | Posts inside the map viewport | map         | Google Map; bounds become a live filter        |
+| `sort`              | Orders the listing (no filtering) | dropdown | Value is one combined key, e.g. `date_desc`    |
 
 ---
 
@@ -177,6 +179,26 @@ Or hand-built — you only need two inputs with the `.etchfacet-min` /
 Values are sent as `[min, max]` and translated to a `meta_query` `BETWEEN`
 clause with `NUMERIC` casting.
 
+A range/slider facet's own min/max bounds (as returned by the count endpoint,
+and used to auto-size the inputs) always span the **entire post type** —
+they deliberately ignore every other active facet, so the slider's draggable
+extent stays fixed regardless of what else is filtered. Only the *value*
+you've chosen within those bounds acts as a filter, and only once you've
+actually touched the control (see "Active filters summary" below).
+
+**Reset-to-full-range icon.** Drop a `.etchfacets-range-reset` button
+anywhere inside the facet container and it'll snap that facet's inputs back
+to their full min/max (or clear a date range) and re-fetch — independent of
+the page-wide `[etchfacets_reset]` button, which clears everything:
+
+```html
+<div data-etchfacet="price" data-etchfacet-source="meta_range:price">
+    <input type="number" class="etchfacet-min">
+    <input type="number" class="etchfacet-max">
+    <button type="button" class="etchfacets-range-reset" aria-label="Reset price range">↺</button>
+</div>
+```
+
 ### Search — `search`
 
 Forwards the input to `WP_Query`'s `s` parameter. Input is debounced 300 ms.
@@ -231,6 +253,127 @@ Switches the queried post type(s) at request time. Values are post type slugs.
 </div>
 ```
 
+### Sort — `sort`
+
+Orders the listing. Unlike every other source type, it never narrows
+results — it's excluded from count calculation and from the active-filters
+summary (see below), since there's nothing to "clear".
+
+The `<select>`'s value is a single combined key mapping to `orderby`/`order`:
+
+| Value         | Meaning                          |
+|---------------|-----------------------------------|
+| `date_desc`   | Newest first (the typical default) |
+| `date_asc`    | Oldest first                      |
+| `title_asc`   | A–Z                                |
+| `title_desc`  | Z–A                                |
+| `relevance`   | Best match — only meaningful alongside an active `search` facet; otherwise WordPress quietly falls back to its default ordering. |
+
+```html
+<div data-etchfacet="sort" data-etchfacet-source="sort">
+    <select>
+        <option value="date_desc">Newest first</option>
+        <option value="date_asc">Oldest first</option>
+        <option value="title_asc">A–Z</option>
+        <option value="title_desc">Z–A</option>
+        <option value="relevance">Best match</option>
+    </select>
+</div>
+```
+
+Give the `<select>` a non-empty default value (e.g. pre-select `date_desc`) —
+an empty `value=""` is treated the same as "no selection" by the generic
+dropdown handling, so nothing would be sent until the user touches it.
+
+### Map — `geo:{lat_key},{lng_key}`
+
+Renders a **Google Map** that plots posts with latitude/longitude meta and uses
+the **visible map bounds** as a live filter. Source format is
+`geo:LAT_META_KEY,LNG_META_KEY` (defaults `_ef_lat` / `_ef_lng`).
+
+How it behaves alongside other facets:
+
+- Selecting taxonomies / meta / search filters **both** the listing and the
+  markers.
+- Panning or zooming shows a **"Search this area"** button rather than
+  filtering instantly (see below) — clicking it filters the **listing and
+  every other facet's counts** to what's currently in view. The markers
+  themselves are not re-filtered by the viewport, so you always see every
+  marker matching the other facets regardless of where you've panned.
+- Reset clears the viewport filter and restores the initial center/zoom.
+
+**Requirements**
+
+1. A Google Maps JavaScript API key — set it under **Settings → EtchFacets**
+   (or via the `etchfacets/map/api_key` filter / a `wp-config.php` constant
+   surfaced through that filter).
+2. The faceted posts must have two numeric meta values: latitude and longitude
+   (defaults `_ef_lat` and `_ef_lng`).
+3. A `[etchfacets_listing]` (or equivalent `.etchfacets-template`) must be on the
+   page — the map drives that listing.
+
+**Shortcode**
+
+```text
+[etchfacets_map
+    name="map"
+    lat_key="_ef_lat"
+    lng_key="_ef_lng"
+    center="59.913,10.739"
+    zoom="11"
+    height="480"]
+```
+
+| Attribute | Default    | Description                              |
+|-----------|------------|-------------------------------------------|
+| `name`    | `map`      | Facet name (URL key `_map`).             |
+| `lat_key` | `_ef_lat`  | Latitude meta key.                       |
+| `lng_key` | `_ef_lng`  | Longitude meta key.                      |
+| `center`  | `0,0`      | Initial center `lat,lng`.                |
+| `zoom`    | `11`       | Initial zoom level.                      |
+| `height`  | `480`      | Map height in pixels.                    |
+
+**Hand-built Etch markup**
+
+```html
+<div class="etchfacets-map"
+     data-etchfacet="map"
+     data-etchfacet-source="geo:_ef_lat,_ef_lng"
+     data-etchfacet-center="59.913,10.739"
+     data-etchfacet-zoom="11"
+     data-etchfacet-min-height="480"
+     data-etchfacet-color-taxonomy="location-type"
+     style="width:100%;height:480px"></div>
+```
+
+`data-etchfacet-color-taxonomy` (optional) — color-codes markers and the info
+window's category badge by a taxonomy's terms. The color per term slug is a
+deterministic hash into a fixed palette, so it's stable across page loads
+without any server-side color config. Omit it for single-color markers.
+
+**Built in, no extra markup needed**
+
+- **Clustering** — nearby markers group into a numbered cluster bubble at low
+  zoom and split apart as you zoom in (via `@googlemaps/markerclusterer`,
+  loaded lazily from a CDN alongside the Maps API).
+- **"Search this area"** — panning/zooming shows a floating button instead of
+  refiltering immediately; the listing only updates once you click it. Keeps
+  exploration (panning around, zooming) from firing a filter request on every
+  micro-movement.
+- **Rich info windows** — marker click shows a styled popup with photo (falls
+  back to a `_ef_photo` meta URL when there's no featured image), category
+  badge, and a link to the post.
+
+**Extensibility filters (PHP)**
+
+| Hook                         | Purpose                              |
+|-------------------------------|--------------------------------------|
+| `etchfacets/map/api_key`     | Override the API key resolution.     |
+| `etchfacets/map/coord_keys`  | Override `[lat_key, lng_key]`.       |
+| `etchfacets/map/max_markers` | Cap markers per request (def. 500).  |
+| `etchfacets/map/marker`      | Mutate a single marker payload.      |
+| `etchfacets/map/markers`     | Mutate the full marker array.        |
+
 ---
 
 ## UI Types in Detail
@@ -275,6 +418,22 @@ Things you'll usually drop on the page along with facets:
 `[etchfacets_listing]` accepts `post_type`, `posts_per_page`, `orderby`,
 `order`, `id`, `class`. Or build your own container with the equivalent
 `data-etchfacets-*` attributes — see [PLUGIN_REFERENCE.md](PLUGIN_REFERENCE.md#listing-container).
+
+### Active filters summary
+
+Drop a `[data-etchfacets-active-filters]` container anywhere on the page and
+the JS keeps it populated with a removable "chip" for every currently active
+facet value — labels are read straight from the facet UI already on the page
+(a checkbox's `<label>` text, a `<select>`'s selected `<option>`, etc.), no
+extra config needed:
+
+```html
+<div data-etchfacets-active-filters></div>
+```
+
+Each chip's `×` clears just that one value and re-fetches. Entirely optional
+— nothing renders here unless the container exists on the page. A `sort`
+facet (see above) never appears here, since it doesn't filter anything.
 
 ---
 
@@ -356,6 +515,9 @@ window.EtchFacets.on('error',  fn) // Listen to etchfacets:error
 
 ## Roadmap
 
-A **map viewport** facet (Google Maps) using `meta:lat` / `meta:lng` and the
-visible map bounds as a live filter is planned — see
-[MAP_FACET_PLAN.md](MAP_FACET_PLAN.md). It is not implemented yet.
+The **map viewport** facet (Google Maps) is implemented, including marker
+clustering, category-colored markers, and a "Search this area" pan/zoom
+pattern — see the [Map](#map--geolat_keylng_key) section above and the
+original design notes in [MAP_FACET_PLAN.md](MAP_FACET_PLAN.md). Future map
+work: a "zoom in for more" hint when results are truncated, and an admin
+metabox for entering coordinates.

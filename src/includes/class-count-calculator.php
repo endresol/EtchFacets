@@ -35,10 +35,38 @@ class EtchFacets_Count_Calculator {
 	 * @return array ['facet_name' => [['value' => 'slug', 'label' => 'Label', 'count' => 5], ...], ...]
 	 */
 	public function calculate_all( array $facets, array $sources, array $logic, array $base_args ): array {
-		$counts = [];
+		$counts       = [];
+		$all_post_ids = null; // Lazy — only computed if a meta_range facet is present.
 
 		foreach ( $sources as $facet_name => $source_string ) {
-			$source   = EtchFacets_Query_Builder::parse_source( $source_string );
+			$source = EtchFacets_Query_Builder::parse_source( $source_string );
+
+			// Geo and sort facets have no enumerable choices to count.
+			if ( in_array( $source['type'], [ 'geo', 'sort' ], true ) ) {
+				$counts[ $facet_name ] = [];
+				continue;
+			}
+
+			// A range facet's own bounds always span the ENTIRE post type,
+			// ignoring every active facet — including its own. Unlike
+			// checkbox/select counts (which SHOULD narrow to "what would
+			// toggling this give you, given the other active facets"), a
+			// slider's draggable extent has to stay fixed: if it narrowed
+			// along with the other facets, clearing/resetting it would land
+			// on a different min/max depending on what else was active,
+			// instead of always returning to the same handles.
+			if ( 'meta_range' === $source['type'] ) {
+				if ( null === $all_post_ids ) {
+					$all_post_ids = $this->get_all_post_ids( $base_args );
+				}
+				$counts[ $facet_name ] = $this->calculate_meta_range( $source['value'], $all_post_ids );
+				continue;
+			}
+
+			// Viewport (geo) facets DO narrow other facets' counts, same as any
+			// other active facet — get_post_ids_excluding() already excludes
+			// only $facet_name itself, so a geo selection elsewhere in $facets
+			// naturally carries through.
 			$post_ids = $this->get_post_ids_excluding( $facet_name, $facets, $sources, $logic, $base_args );
 
 			switch ( $source['type'] ) {
@@ -48,10 +76,6 @@ class EtchFacets_Count_Calculator {
 
 				case 'meta':
 					$counts[ $facet_name ] = $this->calculate_meta_counts( $source['value'], $post_ids );
-					break;
-
-				case 'meta_range':
-					$counts[ $facet_name ] = $this->calculate_meta_range( $source['value'], $post_ids );
 					break;
 
 				default:
@@ -76,6 +100,24 @@ class EtchFacets_Count_Calculator {
 	private function get_post_ids_excluding( string $facet_name, array $facets, array $sources, array $logic, array $base_args ): array {
 		$args = $this->query_builder->build_query_args_excluding( $facet_name, $facets, $sources, $logic, $base_args );
 
+		$args['fields']         = 'ids';
+		$args['posts_per_page'] = -1;
+		$args['no_found_rows']  = true;
+
+		$query = new WP_Query( $args );
+
+		return $query->posts;
+	}
+
+	/**
+	 * Get every post ID for the base query, with no facet selections applied
+	 * at all — the full, unfiltered post type.
+	 *
+	 * @param array $base_args Base query args (post_type, any base tax/meta query).
+	 * @return array Array of post IDs.
+	 */
+	private function get_all_post_ids( array $base_args ): array {
+		$args                   = $base_args;
 		$args['fields']         = 'ids';
 		$args['posts_per_page'] = -1;
 		$args['no_found_rows']  = true;

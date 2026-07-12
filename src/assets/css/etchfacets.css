@@ -74,6 +74,30 @@
 	color: var(--neutral-900, #111827);
 }
 
+/* Small "reset to full range" icon for a single range/slider/date facet
+   (price, age, reading time, rooms, …) */
+.etchfacets-range-reset {
+	all: unset;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.1rem;
+	height: 1.1rem;
+	margin-left: 0.25rem;
+	border-radius: 50%;
+	font-size: 0.8125rem;
+	line-height: 1;
+	color: var(--neutral-500, #6b7280);
+	vertical-align: middle;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+
+.etchfacets-range-reset:hover {
+	background: var(--neutral-200, #e5e7eb);
+	color: var(--neutral-900, #111827);
+}
+
 /* ── Checkbox / radio labels ── */
 .etchfacets-checkbox {
 	display: inline-flex;
@@ -94,4 +118,134 @@
 	padding: 2rem 1rem;
 	text-align: center;
 	color: var(--neutral-500, #6b7280);
+}
+
+/* ── Active filters summary ── */
+.etchfacets-active-filters {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.etchfacets-active-filters.etchfacets-active-filters--empty {
+	display: none;
+}
+
+.etchfacets-active-filter {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.3rem 0.5rem 0.3rem 0.75rem;
+	border-radius: 999px;
+	background: var(--neutral-100, #f3f4f6);
+	color: var(--neutral-700, #374151);
+	font-size: 0.8125rem;
+	line-height: 1.2;
+}
+
+.etchfacets-active-filter-remove {
+	all: unset;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.1rem;
+	height: 1.1rem;
+	border-radius: 50%;
+	color: var(--neutral-500, #6b7280);
+	font-size: 0.9375rem;
+	line-height: 1;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+
+.etchfacets-active-filter-remove:hover {
+	background: var(--neutral-300, #d1d5db);
+	color: var(--neutral-900, #111827);
+}
+
+/* ── Map facet ── */
+.etchfacets-map {
+	position: relative;
+	width: 100%;
+	min-height: 320px;
+	background: var(--neutral-100, #f3f4f6);
+}
+
+.etchfacets-map.etchfacets-map--loading::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: rgba(255, 255, 255, 0.35);
+	pointer-events: none;
+}
+
+.etchfacets-map.etchfacets-map--error::after {
+	content: "Map unavailable — check the Google Maps API key.";
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1rem;
+	text-align: center;
+	color: var(--neutral-500, #6b7280);
+}
+
+/* Info window */
+.etchfacets-map-info {
+	max-width: 220px;
+	font-size: 0.875rem;
+	line-height: 1.4;
+}
+
+.etchfacets-map-info-img {
+	display: block;
+	width: 100%;
+	height: auto;
+	margin-bottom: 0.5rem;
+	border-radius: 4px;
+}
+
+.etchfacets-map-info-title {
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.etchfacets-map-info-badge {
+	display: inline-block;
+	margin-bottom: 0.35rem;
+	padding: 0.1rem 0.5rem;
+	border-radius: 999px;
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: #fff;
+	background: var(--etchfacets-map-badge-color, #4f46e5);
+}
+
+/* "Search this area" button */
+.etchfacets-map-search-area {
+	position: absolute;
+	top: 12px;
+	left: 50%;
+	transform: translate(-50%, -8px);
+	z-index: 1;
+	padding: 0.5rem 1rem;
+	border: none;
+	border-radius: 999px;
+	background: #fff;
+	color: #1f2937;
+	font-size: 0.875rem;
+	font-weight: 600;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	cursor: pointer;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.etchfacets-map-search-area--visible {
+	opacity: 1;
+	pointer-events: auto;
+	transform: translate(-50%, 0);
 }

@@ -35,6 +35,18 @@
 		const facetElements  = document.querySelectorAll('[data-etchfacet]');
 		const resetButtons   = document.querySelectorAll('.etchfacets-reset');
 		const totalElements  = document.querySelectorAll('[data-etchfacets-total]');
+		const activeFiltersContainer = document.querySelector('[data-etchfacets-active-filters]');
+
+		// Facets (keyed by their [data-etchfacet] container) whose range/slider/
+		// date inputs the user has genuinely dragged/typed into. This is
+		// intentionally NOT inferred from comparing .value against some
+		// "default" — updateCounts() below re-narrows a range facet's min/max
+		// attributes to match what's actually available under the other active
+		// facets, and a <input type="range">/"number"/"date"> silently clamps
+		// its own .value whenever that happens. Without an explicit flag, that
+		// browser-driven clamp is indistinguishable from the user moving the
+		// slider themselves.
+		const touchedRangeFacets = new WeakSet();
 
 		// --- Configuration ----------------------------------------------------
 
@@ -148,12 +160,33 @@
 					}
 				}
 
-				// Range inputs
-				if (!values.length) {
+				// Range inputs — only once the user has actually touched this
+				// facet's slider/inputs (see touchedRangeFacets above). An
+				// untouched range must never be sent as a filter: its bounds
+				// can silently narrow via updateCounts() below to match other
+				// active facets, and sending that narrowed range back as a
+				// filter would double-apply a constraint the user never chose.
+				if (!values.length && touchedRangeFacets.has(el)) {
 					const rangeMin = el.querySelector('.etchfacet-min');
 					const rangeMax = el.querySelector('.etchfacet-max');
 					if (rangeMin && rangeMax) {
 						values = [rangeMin.value, rangeMax.value];
+					}
+				}
+
+				// Generic value attribute — used by JS-driven facets that have no
+				// form inputs (e.g. the map viewport, whose value is its bounds).
+				if (!values.length) {
+					const rawValue = el.getAttribute('data-etchfacet-value');
+					if (rawValue) {
+						try {
+							const parsed = JSON.parse(rawValue);
+							if (Array.isArray(parsed) && parsed.length) {
+								values = parsed.map(String);
+							}
+						} catch (e) {
+							// Ignore malformed values.
+						}
 					}
 				}
 
@@ -184,11 +217,29 @@
 				// it in the caller) for every facet processed after this one.
 				if (!Array.isArray(choices)) {
 					if (choices && typeof choices.min !== 'undefined' && typeof choices.max !== 'undefined') {
-						[facetEl.querySelector('.etchfacet-min'), facetEl.querySelector('.etchfacet-max')].forEach((input) => {
-							if (!input) return;
-							input.min = choices.min;
-							input.max = choices.max;
-						});
+						const rangeMin = facetEl.querySelector('.etchfacet-min');
+						const rangeMax = facetEl.querySelector('.etchfacet-max');
+
+						if (rangeMin) rangeMin.min = choices.min;
+						if (rangeMax) rangeMax.max = choices.max;
+
+						// An untouched facet has no user-chosen value to protect —
+						// keep it pinned to the full range currently available
+						// under whichever other facets are active, in both
+						// directions (a plain attribute update only auto-clamps
+						// a value that's now too high/low; it won't widen a value
+						// back out when the bounds relax again).
+						if (rangeMin && rangeMax && !touchedRangeFacets.has(facetEl)) {
+							rangeMin.value = choices.min;
+							rangeMax.value = choices.max;
+						}
+
+						// Refresh a custom slider's track fill / value labels,
+						// which only the inputs' own inline oninput handler
+						// knows how to redraw — a bare attribute/value change
+						// doesn't trigger it.
+						if (rangeMin && typeof rangeMin.oninput === 'function') rangeMin.oninput();
+						if (rangeMax && typeof rangeMax.oninput === 'function') rangeMax.oninput();
 					}
 					continue;
 				}
@@ -234,6 +285,174 @@
 					}
 				});
 			}
+		}
+
+		// ---------------------------------------------------------------------
+		// Active filters summary (optional — only runs if the page has a
+		// [data-etchfacets-active-filters] container)
+		// ---------------------------------------------------------------------
+
+		/**
+		 * Text of a checkbox/radio <label>, minus the input itself and any
+		 * .etchfacet-count span — leaves just the human-readable choice text
+		 * (e.g. "Hotel" rather than "Hotel (3)").
+		 */
+		function choiceLabelText(labelEl, fallback) {
+			if (!labelEl) return fallback;
+			const clone = labelEl.cloneNode(true);
+			clone.querySelectorAll('input, .etchfacet-count').forEach((n) => n.remove());
+			const text = clone.textContent.trim();
+			return text || fallback;
+		}
+
+		/** Text of a <select> <option>, minus any trailing " (N)" count suffix. */
+		function optionLabelText(optionEl, fallback) {
+			if (!optionEl) return fallback;
+			const text = optionEl.textContent.replace(/\s*\(\d+\)$/, '').trim();
+			return text || fallback;
+		}
+
+		/**
+		 * A facet's own heading (e.g. "Topic"), used to prefix its value chips
+		 * so "Guides" reads as "Topic: Guides". Falls back to the facet name
+		 * when the facet has no heading element of its own.
+		 */
+		function facetGroupLabel(facetEl, facetName) {
+			const heading = facetEl.querySelector('h2, h3, h4, h5, h6');
+			const text = heading ? heading.textContent.trim() : '';
+			return text || facetName;
+		}
+
+		/**
+		 * Snap a facet's range/slider/date inputs back to "no filter applied"
+		 * and clear its touched flag. Values go to the inputs' CURRENT min/max
+		 * attributes (not some remembered original) — those attributes already
+		 * reflect what's available under whichever other facets are still
+		 * active, via updateCounts() below, so this is "show everything that's
+		 * still reachable", not "restore page-load state".
+		 */
+		function resetRangeFacet(facetEl, rangeMin, rangeMax) {
+			touchedRangeFacets.delete(facetEl);
+
+			if (rangeMin.type === 'date') {
+				rangeMin.value = '';
+				rangeMax.value = '';
+			} else {
+				rangeMin.value = rangeMin.min || 0;
+				rangeMax.value = rangeMax.max || 0;
+			}
+
+			// Refresh a custom slider's track fill / value labels, which are
+			// driven by the inputs' own inline oninput handler — a bare .value
+			// assignment doesn't trigger it. Called directly rather than
+			// dispatchEvent() so it doesn't also re-trigger the debounced
+			// input listener (and mark the facet touched again).
+			if (typeof rangeMin.oninput === 'function') rangeMin.oninput();
+			if (typeof rangeMax.oninput === 'function') rangeMax.oninput();
+		}
+
+		/**
+		 * Render the current active facet selections as removable chips into
+		 * [data-etchfacets-active-filters]. Reads labels straight from the
+		 * facet UI already on the page — no server round-trip needed.
+		 */
+		function renderActiveFilters() {
+			if (!activeFiltersContainer) return;
+
+			const chips = [];
+
+			facetElements.forEach((facetEl) => {
+				// Sorting isn't a filter — it never narrows results, so it
+				// doesn't belong in a list of things the user can "remove".
+				if (facetEl.getAttribute('data-etchfacet-source') === 'sort') return;
+
+				const facetName  = facetEl.getAttribute('data-etchfacet');
+				const groupLabel = facetGroupLabel(facetEl, facetName);
+
+				// Checkboxes
+				facetEl.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
+					const text = choiceLabelText(cb.closest('label'), cb.value);
+					chips.push({
+						text: `${groupLabel}: ${text}`,
+						remove: () => { cb.checked = false; fetchResults(1); },
+					});
+				});
+
+				// Radios
+				const radio = facetEl.querySelector('input[type="radio"]:checked');
+				if (radio) {
+					const text = choiceLabelText(radio.closest('label'), radio.value);
+					chips.push({
+						text: `${groupLabel}: ${text}`,
+						remove: () => { radio.checked = false; fetchResults(1); },
+					});
+				}
+
+				// Select / dropdown
+				const select = facetEl.querySelector('select');
+				if (select && select.value !== '') {
+					const text = optionLabelText(select.options[select.selectedIndex], select.value);
+					chips.push({
+						text: `${groupLabel}: ${text}`,
+						remove: () => { select.selectedIndex = 0; fetchResults(1); },
+					});
+				}
+
+				// Search input
+				const search = facetEl.querySelector('input[type="search"]') || facetEl.querySelector('input[type="text"]');
+				if (search && search.value.trim() !== '') {
+					const value = search.value.trim();
+					chips.push({
+						text: `“${value}”`,
+						remove: () => { search.value = ''; fetchResults(1); },
+					});
+				}
+
+				// Range / slider / date inputs
+				const rangeMin = facetEl.querySelector('.etchfacet-min');
+				const rangeMax = facetEl.querySelector('.etchfacet-max');
+				if (rangeMin && rangeMax && touchedRangeFacets.has(facetEl)) {
+					const text = rangeMin.value && rangeMax.value
+						? `${rangeMin.value} – ${rangeMax.value}`
+						: (rangeMin.value ? `After ${rangeMin.value}` : `Before ${rangeMax.value}`);
+					chips.push({
+						text: `${groupLabel}: ${text}`,
+						remove: () => { resetRangeFacet(facetEl, rangeMin, rangeMax); fetchResults(1); },
+					});
+				}
+
+				// Generic JS-driven facet value (e.g. the map viewport) — no form
+				// inputs to read a label from, so fall back to the group label alone.
+				if (!facetEl.querySelector('input, select') && facetEl.hasAttribute('data-etchfacet-value')) {
+					chips.push({
+						text: groupLabel,
+						remove: () => { facetEl.removeAttribute('data-etchfacet-value'); fetchResults(1); },
+					});
+				}
+			});
+
+			activeFiltersContainer.innerHTML = '';
+			chips.forEach((chip) => {
+				const chipEl = document.createElement('span');
+				chipEl.className = 'etchfacets-active-filter';
+
+				const textEl = document.createElement('span');
+				textEl.className = 'etchfacets-active-filter-text';
+				textEl.textContent = chip.text;
+
+				const removeBtn = document.createElement('button');
+				removeBtn.type = 'button';
+				removeBtn.className = 'etchfacets-active-filter-remove';
+				removeBtn.setAttribute('aria-label', `Remove ${chip.text}`);
+				removeBtn.textContent = '×';
+				removeBtn.addEventListener('click', chip.remove);
+
+				chipEl.appendChild(textEl);
+				chipEl.appendChild(removeBtn);
+				activeFiltersContainer.appendChild(chipEl);
+			});
+
+			activeFiltersContainer.classList.toggle('etchfacets-active-filters--empty', chips.length === 0);
 		}
 
 		// ---------------------------------------------------------------------
@@ -309,6 +528,16 @@
 				const values = value.split(',');
 				hasState = true;
 
+				// Map viewport facet — restore bounds as a generic value, but
+				// only when all four parts are finite numbers.
+				if (facetEl.classList.contains('etchfacets-map') && values.length === 4) {
+					const nums = values.map(Number);
+					if (nums.every((n) => Number.isFinite(n))) {
+						facetEl.setAttribute('data-etchfacet-value', JSON.stringify(nums));
+					}
+					return;
+				}
+
 				values.forEach((v) => {
 					const cb = facetEl.querySelector(`input[type="checkbox"][value="${CSS.escape(v)}"]`);
 					if (cb) cb.checked = true;
@@ -373,6 +602,11 @@
 		function fetchResults(page = 1) {
 			currentPage = page;
 
+			// Reflect the current facet UI state immediately — no need to wait
+			// for the request to resolve, since chips are read straight from
+			// the inputs that just changed.
+			renderActiveFilters();
+
 			// Cancel any in-flight request.
 			if (currentController) {
 				currentController.abort();
@@ -382,6 +616,14 @@
 			// Loading state.
 			template.classList.add('etchfacets-loading');
 			document.dispatchEvent(new CustomEvent('etchfacets:before-refresh'));
+
+			// Notify decoupled modules (e.g. the map) that selections changed so
+			// they can refresh their own data alongside the listing.
+			document.dispatchEvent(
+				new CustomEvent('etchfacets:selectionChanged', {
+					detail: { selections: collectSelections() },
+				})
+			);
 
 			// Build the filtered page URL (Etch renders it via pre_get_posts).
 			const filterUrl = buildFilterUrl(page);
@@ -618,6 +860,11 @@
 
 		function clearAllInputs() {
 			facetElements.forEach((el) => {
+				// Clear JS-driven facet values (e.g. the map viewport bounds).
+				if (el.hasAttribute('data-etchfacet-value')) {
+					el.removeAttribute('data-etchfacet-value');
+				}
+
 				el.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach((input) => {
 					input.checked = false;
 				});
@@ -647,6 +894,9 @@
 					}
 				});
 			});
+
+			// Let decoupled modules (e.g. the map) reset their own state too.
+			document.dispatchEvent(new CustomEvent('etchfacets:cleared'));
 		}
 
 		// ---------------------------------------------------------------------
@@ -672,14 +922,15 @@
 				input.addEventListener('input', debouncedSearch);
 			});
 
-			// Range inputs (debounced).
-			el.querySelectorAll('input[type="range"]').forEach((input) => {
-				input.addEventListener('input', debouncedRange);
-			});
-
-			// Number inputs used as range min/max (debounced).
-			el.querySelectorAll('input[type="number"].etchfacet-min, input[type="number"].etchfacet-max').forEach((input) => {
-				input.addEventListener('input', debouncedRange);
+			// Range/slider/number/date min-max inputs (debounced). Marks the
+			// facet touched so it's treated as a genuine user selection — see
+			// touchedRangeFacets above for why that can't be inferred from the
+			// value alone.
+			el.querySelectorAll('.etchfacet-min, .etchfacet-max').forEach((input) => {
+				input.addEventListener('input', () => {
+					touchedRangeFacets.add(el);
+					debouncedRange();
+				});
 			});
 		});
 
@@ -688,6 +939,25 @@
 			btn.addEventListener('click', (e) => {
 				e.preventDefault();
 				clearAllInputs();
+				fetchResults(1);
+			});
+		});
+
+		// Per-facet range reset (e.g. a small icon next to a price/age/reading-time
+		// slider that snaps just that one facet back to its full min–max span,
+		// independent of the "Clear filters" button which resets everything).
+		document.querySelectorAll('.etchfacets-range-reset').forEach((btn) => {
+			btn.addEventListener('click', (e) => {
+				e.preventDefault();
+
+				const facetEl = btn.closest('[data-etchfacet]');
+				if (!facetEl) return;
+
+				const rangeMin = facetEl.querySelector('.etchfacet-min');
+				const rangeMax = facetEl.querySelector('.etchfacet-max');
+				if (!rangeMin || !rangeMax) return;
+
+				resetRangeFacet(facetEl, rangeMin, rangeMax);
 				fetchResults(1);
 			});
 		});
@@ -750,6 +1020,9 @@
 		// Always fetch counts on page load so they show immediately.
 		fetchCounts();
 
+		// Reflect any URL-restored selections in the active-filters summary.
+		renderActiveFilters();
+
 		// ---------------------------------------------------------------------
 		// Public API
 		// ---------------------------------------------------------------------
@@ -761,6 +1034,7 @@
 				fetchResults(1);
 			},
 			getSelections: () => collectSelections(),
+			getQueryContext: () => baseQuery,
 			on: (event, callback) => document.addEventListener(`etchfacets:${event}`, callback),
 		};
 	});

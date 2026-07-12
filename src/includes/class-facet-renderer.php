@@ -19,6 +19,7 @@ class EtchFacets_Facet_Renderer {
 	public function init(): void {
 		add_shortcode( 'etchfacets_listing', [ $this, 'render_listing_shortcode' ] );
 		add_shortcode( 'etchfacets_facet', [ $this, 'render_facet_shortcode' ] );
+		add_shortcode( 'etchfacets_map', [ $this, 'render_map_shortcode' ] );
 		add_shortcode( 'etchfacets_reset', [ $this, 'render_reset_shortcode' ] );
 		add_shortcode( 'etchfacets_results_count', [ $this, 'render_results_count_shortcode' ] );
 	}
@@ -167,6 +168,57 @@ class EtchFacets_Facet_Renderer {
 		}
 
 		$html .= '</div>';
+
+		return $html;
+	}
+
+	/**
+	 * Render the [etchfacets_map] shortcode.
+	 *
+	 * Outputs a map facet container. The Google Maps viewport becomes a live
+	 * "geo" filter and posts with the configured lat/lng meta are plotted as
+	 * markers. Requires a Google Maps API key (Settings → EtchFacets).
+	 *
+	 * @param array|string $atts    Shortcode attributes.
+	 * @param string|null  $content Shortcode content (unused).
+	 * @return string The rendered HTML.
+	 */
+	public function render_map_shortcode( $atts, ?string $content = null ): string {
+		$atts = shortcode_atts( [
+			'name'       => 'map',
+			'lat_key'    => '_ef_lat',
+			'lng_key'    => '_ef_lng',
+			'center'     => '0,0',
+			'zoom'       => '11',
+			'height'     => '480',
+			'class'      => '',
+		], $atts, 'etchfacets_map' );
+
+		$name        = sanitize_key( $atts['name'] );
+		$lat_key     = sanitize_text_field( $atts['lat_key'] );
+		$lng_key     = sanitize_text_field( $atts['lng_key'] );
+		$center      = sanitize_text_field( $atts['center'] );
+		$zoom        = (int) $atts['zoom'];
+		$height      = (int) $atts['height'];
+		$extra_class = sanitize_html_class( $atts['class'] );
+
+		if ( ! $name || ! $lat_key || ! $lng_key ) {
+			return '';
+		}
+
+		$source  = 'geo:' . $lat_key . ',' . $lng_key;
+		$classes = 'etchfacets-map';
+		if ( $extra_class ) {
+			$classes .= ' ' . $extra_class;
+		}
+
+		$html  = '<div class="' . esc_attr( $classes ) . '"';
+		$html .= ' data-etchfacet="' . esc_attr( $name ) . '"';
+		$html .= ' data-etchfacet-source="' . esc_attr( $source ) . '"';
+		$html .= ' data-etchfacet-center="' . esc_attr( $center ) . '"';
+		$html .= ' data-etchfacet-zoom="' . esc_attr( (string) $zoom ) . '"';
+		$html .= ' data-etchfacet-min-height="' . esc_attr( (string) $height ) . '"';
+		$html .= ' style="width:100%;height:' . esc_attr( (string) $height ) . 'px"></div>';
 
 		return $html;
 	}

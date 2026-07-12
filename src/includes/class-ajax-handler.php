@@ -33,6 +33,8 @@ class EtchFacets_Ajax_Handler {
 	public function init(): void {
 		add_action( 'wp_ajax_etchfacets_filter', [ $this, 'handle_filter' ] );
 		add_action( 'wp_ajax_nopriv_etchfacets_filter', [ $this, 'handle_filter' ] );
+		add_action( 'wp_ajax_etchfacets_map', [ $this, 'handle_map' ] );
+		add_action( 'wp_ajax_nopriv_etchfacets_map', [ $this, 'handle_map' ] );
 	}
 
 	/**
@@ -108,6 +110,181 @@ class EtchFacets_Ajax_Handler {
 		$response = apply_filters( 'etchfacets_ajax_response', $response, $query, $facets, $sources );
 
 		wp_send_json_success( $response );
+	}
+
+	/**
+	 * Handle the map marker AJAX request.
+	 *
+	 * Accepts the same input shape as handle_filter but returns a flat marker
+	 * dataset (no pagination, no HTML) for plotting on the map. The map's own
+	 * viewport (geo) facet is intentionally excluded so markers reflect every
+	 * other facet — panning the map filters the list, not the marker set.
+	 *
+	 * @return void
+	 */
+	public function handle_map(): void {
+		// 1. Verify nonce.
+		if ( ! check_ajax_referer( 'etchfacets_nonce', 'nonce', false ) ) {
+			wp_send_json_error( 'Invalid nonce', 403 );
+		}
+
+		// 2. Read and sanitize POST data.
+		$raw_facets  = isset( $_POST['facets'] ) ? json_decode( wp_unslash( $_POST['facets'] ), true ) : [];
+		$raw_sources = isset( $_POST['sources'] ) ? json_decode( wp_unslash( $_POST['sources'] ), true ) : [];
+		$raw_logic   = isset( $_POST['logic'] ) ? json_decode( wp_unslash( $_POST['logic'] ), true ) : [];
+		$raw_context = isset( $_POST['query_context'] ) ? json_decode( wp_unslash( $_POST['query_context'] ), true ) : [];
+
+		$facets        = $this->sanitize_facets( is_array( $raw_facets ) ? $raw_facets : [] );
+		$sources       = $this->sanitize_sources( is_array( $raw_sources ) ? $raw_sources : [] );
+		$logic         = $this->sanitize_logic( is_array( $raw_logic ) ? $raw_logic : [] );
+		$query_context = $this->sanitize_query_context( is_array( $raw_context ) ? $raw_context : [] );
+
+		// 3. Resolve the geo facet and its coordinate meta keys.
+		$geo_facet = '';
+		$lat_key   = '';
+		$lng_key   = '';
+		foreach ( $sources as $facet_name => $source_string ) {
+			if ( EtchFacets_Query_Builder::is_geo_source( $source_string ) ) {
+				$geo_facet = $facet_name;
+				$parsed    = EtchFacets_Query_Builder::parse_source( $source_string );
+				$keys      = array_map( 'trim', explode( ',', $parsed['value'] ) );
+				$lat_key   = $keys[0] ?? '';
+				$lng_key   = isset( $keys[1] ) ? $keys[1] : '';
+				break;
+			}
+		}
+
+		/**
+		 * Filter the coordinate meta keys used to read marker positions.
+		 *
+		 * @param array  $keys      [lat_key, lng_key].
+		 * @param string $geo_facet The geo facet name.
+		 */
+		[ $lat_key, $lng_key ] = apply_filters( 'etchfacets/map/coord_keys', [ $lat_key, $lng_key ], $geo_facet );
+
+		if ( '' === $lat_key || '' === $lng_key ) {
+			wp_send_json_error( 'No geo facet configured', 400 );
+		}
+
+		// 4. Markers reflect all facets EXCEPT the map viewport itself.
+		$marker_facets = $facets;
+		if ( $geo_facet ) {
+			unset( $marker_facets[ $geo_facet ] );
+		}
+
+		/**
+		 * Filter the maximum number of markers returned per request.
+		 *
+		 * @param int $max Default 500.
+		 */
+		$max = (int) apply_filters( 'etchfacets/map/max_markers', 500 );
+		$max = max( 1, $max );
+
+		// 5. Build the query, restricted to posts that have both coordinates.
+		$args                   = $this->query_builder->build_query_args( $marker_facets, $sources, $logic, $query_context );
+		$args['fields']         = 'ids';
+		$args['posts_per_page'] = $max + 1; // +1 to detect truncation.
+		$args['paged']          = 1;
+		$args['no_found_rows']  = true;
+
+		$geo_exists = [
+			'relation' => 'AND',
+			[ 'key' => $lat_key, 'compare' => 'EXISTS' ],
+			[ 'key' => $lng_key, 'compare' => 'EXISTS' ],
+		];
+
+		if ( ! empty( $args['meta_query'] ) ) {
+			$args['meta_query'] = [
+				'relation' => 'AND',
+				$args['meta_query'],
+				$geo_exists,
+			];
+		} else {
+			$args['meta_query'] = $geo_exists;
+		}
+
+		// 6. Run the query.
+		$query = new WP_Query( $args );
+		$ids   = $query->posts;
+
+		$truncated = count( $ids ) > $max;
+		if ( $truncated ) {
+			$ids = array_slice( $ids, 0, $max );
+		}
+
+		// 7. Prime the meta + term caches, then build the marker payload.
+		$post_type = $query_context['post_type'] ?? 'post';
+		if ( ! empty( $ids ) ) {
+			update_meta_cache( 'post', $ids );
+			update_object_term_cache( $ids, $post_type );
+		}
+		$taxonomies = get_object_taxonomies( $post_type, 'names' );
+
+		$markers = [];
+		foreach ( $ids as $id ) {
+			$lat = get_post_meta( $id, $lat_key, true );
+			$lng = get_post_meta( $id, $lng_key, true );
+
+			if ( '' === $lat || '' === $lng || ! is_numeric( $lat ) || ! is_numeric( $lng ) ) {
+				continue;
+			}
+
+			// Terms per taxonomy — lets the frontend color-code markers (via
+			// data-etchfacet-color-taxonomy) without a second request per post.
+			$terms = [];
+			foreach ( $taxonomies as $taxonomy ) {
+				$post_terms = get_the_terms( $id, $taxonomy );
+				if ( is_array( $post_terms ) && ! empty( $post_terms ) ) {
+					$terms[ $taxonomy ] = array_map(
+						static fn( WP_Term $term ): array => [ 'slug' => $term->slug, 'name' => $term->name ],
+						$post_terms
+					);
+				}
+			}
+
+			// Fall back to a conventional `_ef_photo` meta URL when the post has
+			// no real featured image — useful for demo/seed data that isn't
+			// worth uploading actual media attachments for.
+			$thumb = get_the_post_thumbnail_url( $id, 'medium' );
+			if ( ! $thumb ) {
+				$thumb = get_post_meta( $id, '_ef_photo', true );
+			}
+
+			$marker = [
+				'id'    => (int) $id,
+				'lat'   => (float) $lat,
+				'lng'   => (float) $lng,
+				'title' => get_the_title( $id ),
+				'url'   => get_permalink( $id ),
+				'thumb' => (string) ( $thumb ?: '' ),
+				'terms' => $terms,
+			];
+
+			/**
+			 * Filter a single marker payload.
+			 *
+			 * @param array $marker The marker data.
+			 * @param int   $id     The post ID.
+			 */
+			$marker = apply_filters( 'etchfacets/map/marker', $marker, $id );
+
+			if ( ! empty( $marker ) ) {
+				$markers[] = $marker;
+			}
+		}
+
+		/**
+		 * Filter the full marker array before sending.
+		 *
+		 * @param array $markers The marker dataset.
+		 */
+		$markers = apply_filters( 'etchfacets/map/markers', $markers );
+
+		wp_send_json_success( [
+			'markers'   => array_values( $markers ),
+			'total'     => count( $markers ),
+			'truncated' => $truncated,
+		] );
 	}
 
 	/**

@@ -50,6 +50,13 @@ class EtchFacets_Query_Builder {
 					$meta_query[] = $this->build_meta_range_clause( $source['value'], $values );
 					break;
 
+				case 'geo':
+					$geo_clause = $this->build_geo_clause( $source['value'], $values );
+					if ( ! empty( $geo_clause ) ) {
+						$meta_query[] = $geo_clause;
+					}
+					break;
+
 				case 'search':
 					$args['s'] = sanitize_text_field( $values[0] );
 					break;
@@ -64,6 +71,14 @@ class EtchFacets_Query_Builder {
 
 				case 'post_type':
 					$args['post_type'] = array_map( 'sanitize_key', $values );
+					break;
+
+				case 'sort':
+					[ $orderby, $order ] = $this->parse_sort_value( $values[0] );
+					if ( $orderby ) {
+						$args['orderby'] = $orderby;
+						$args['order']   = $order;
+					}
 					break;
 			}
 		}
@@ -115,6 +130,35 @@ class EtchFacets_Query_Builder {
 			'type'  => sanitize_key( $parts[0] ),
 			'value' => isset( $parts[1] ) ? sanitize_text_field( $parts[1] ) : '',
 		];
+	}
+
+	/**
+	 * Whether a source string describes a geo (map viewport) facet.
+	 *
+	 * @param string $source Source string in "type:value" format.
+	 * @return bool True if the source type is "geo".
+	 */
+	public static function is_geo_source( string $source ): bool {
+		return 'geo' === self::parse_source( $source )['type'];
+	}
+
+	/**
+	 * Map a "sort" facet's selected value to WP_Query orderby/order.
+	 *
+	 * @param string $value Sort value, e.g. "date_desc", "title_asc", "relevance".
+	 * @return array{0: string, 1: string} [ orderby, order ]. orderby is '' for
+	 *                                     an unrecognized value (no-op).
+	 */
+	private function parse_sort_value( string $value ): array {
+		$map = [
+			'date_desc'  => [ 'date', 'DESC' ],
+			'date_asc'   => [ 'date', 'ASC' ],
+			'title_asc'  => [ 'title', 'ASC' ],
+			'title_desc' => [ 'title', 'DESC' ],
+			'relevance'  => [ 'relevance', 'DESC' ],
+		];
+
+		return $map[ $value ] ?? [ '', '' ];
 	}
 
 	/**
@@ -177,6 +221,71 @@ class EtchFacets_Query_Builder {
 			'value'   => [ (int) $values[0], (int) $values[1] ],
 			'type'    => 'NUMERIC',
 			'compare' => 'BETWEEN',
+		];
+	}
+
+	/**
+	 * Build a bounding-box meta_query clause for a geo (map viewport) facet.
+	 *
+	 * Source value is "lat_key,lng_key"; values are 4 floats:
+	 * [swLat, swLng, neLat, neLng]. Handles antimeridian crossing
+	 * (when the south-west longitude is greater than the north-east one).
+	 *
+	 * @param string $coord_keys Comma-separated "lat_key,lng_key".
+	 * @param array  $values     Bounds: [swLat, swLng, neLat, neLng].
+	 * @return array Meta query clause, or empty array if invalid.
+	 */
+	private function build_geo_clause( string $coord_keys, array $values ): array {
+		// Require exactly four numeric values.
+		if ( count( $values ) !== 4 || count( array_filter( $values, 'is_numeric' ) ) !== 4 ) {
+			return [];
+		}
+
+		$keys    = array_map( 'trim', explode( ',', $coord_keys ) );
+		$lat_key = $keys[0] ?? '';
+		$lng_key = isset( $keys[1] ) ? $keys[1] : '';
+
+		if ( '' === $lat_key || '' === $lng_key ) {
+			return [];
+		}
+
+		[ $sw_lat, $sw_lng, $ne_lat, $ne_lng ] = array_map( 'floatval', $values );
+
+		// Reject out-of-range coordinates.
+		if ( $sw_lat < -90 || $sw_lat > 90 || $ne_lat < -90 || $ne_lat > 90 ) {
+			return [];
+		}
+		if ( $sw_lng < -180 || $sw_lng > 180 || $ne_lng < -180 || $ne_lng > 180 ) {
+			return [];
+		}
+
+		$lat_clause = [
+			'key'     => $lat_key,
+			'value'   => [ min( $sw_lat, $ne_lat ), max( $sw_lat, $ne_lat ) ],
+			'type'    => 'DECIMAL(10,6)',
+			'compare' => 'BETWEEN',
+		];
+
+		if ( $sw_lng <= $ne_lng ) {
+			$lng_clause = [
+				'key'     => $lng_key,
+				'value'   => [ $sw_lng, $ne_lng ],
+				'type'    => 'DECIMAL(10,6)',
+				'compare' => 'BETWEEN',
+			];
+		} else {
+			// Viewport crosses the antimeridian: match either side of ±180°.
+			$lng_clause = [
+				'relation' => 'OR',
+				[ 'key' => $lng_key, 'value' => [ $sw_lng, 180.0 ], 'type' => 'DECIMAL(10,6)', 'compare' => 'BETWEEN' ],
+				[ 'key' => $lng_key, 'value' => [ -180.0, $ne_lng ], 'type' => 'DECIMAL(10,6)', 'compare' => 'BETWEEN' ],
+			];
+		}
+
+		return [
+			'relation' => 'AND',
+			$lat_clause,
+			$lng_clause,
 		];
 	}
 

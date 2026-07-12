@@ -105,6 +105,8 @@ Provides shortcodes and a PHP helper for rendering facet UI.
 | `author` | `author__in` | Author filter |
 | `date` | `date_query` | Date range (after/before) |
 | `post_type` | `post_type` | Post type filter |
+| `geo:{lat},{lng}` | `meta_query` BETWEEN (bbox) | `geo:_ef_lat,_ef_lng` — map viewport |
+| `sort` | `orderby` / `order` | `sort` — value is a combined key, e.g. `date_desc`; no filtering, excluded from counts |
 
 ---
 
@@ -173,6 +175,13 @@ JS auto-updates these with `(N)` after each filter.
 <span data-etchfacets-total></span>
 ```
 
+### Active filters summary
+```html
+<div data-etchfacets-active-filters></div>
+```
+JS keeps this populated with a removable chip per active facet value. See
+[FACETS.md](FACETS.md#active-filters-summary).
+
 ---
 
 ## CSS Classes
@@ -193,6 +202,15 @@ JS auto-updates these with `(N)` after each filter.
 | `.etchfacets-pagination-prev` / `-next` | Developer | Prev/Next pager buttons — auto-disabled at first/last page |
 | `.etchfacets-pagination-status` | Developer | Auto-populated with `Page X of Y` |
 | `.etchfacets-load-more` | Developer | Appends the next page instead of replacing the listing; auto-disabled (with `.etchfacets-load-more--exhausted`) once exhausted |
+| `.etchfacets-map` | Developer | Map facet container |
+| `.etchfacets-map--loading` | JS (during marker fetch) | Loading state |
+| `.etchfacets-map--error` | JS | Shown when the Google Maps API fails to load (e.g. missing key) |
+| `.etchfacets-map-info` | JS | Info-window content wrapper |
+| `.etchfacets-map-info-badge` | JS | Category badge inside the info window (colored via `data-etchfacet-color-taxonomy`) |
+| `.etchfacets-map-search-area` | JS | Floating "Search this area" button; gets `--visible` after the user pans/zooms |
+| `.etchfacets-range-reset` | Developer | Icon/button inside a range/slider facet; snaps that facet's inputs back to their full min/max and re-fetches |
+| `.etchfacets-active-filter` | JS | One removable chip inside `[data-etchfacets-active-filters]` |
+| `.etchfacets-active-filter-remove` | Developer | The chip's `×` button |
 
 ---
 
