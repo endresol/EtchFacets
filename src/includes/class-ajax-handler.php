@@ -66,6 +66,14 @@ class EtchFacets_Ajax_Handler {
 			$page = 1;
 		}
 
+		// Which facet/listing instance this request belongs to. Not needed for
+		// query correctness (the JS already scopes selections per instance
+		// before sending them, and each instance has its own AbortController),
+		// but echoed back so the calling instance can sanity-check the
+		// response is its own, and as a hook point for future per-group
+		// template resolution.
+		$group = sanitize_key( $_POST['group'] ?? 'main' );
+
 		$query_context = $this->sanitize_query_context( is_array( $raw_context ) ? $raw_context : [] );
 
 		// 3. Build base args from query_context.
@@ -96,6 +104,7 @@ class EtchFacets_Ajax_Handler {
 			'total'      => $query->found_posts,
 			'max_pages'  => $query->max_num_pages,
 			'page'       => $page,
+			'group'      => $group,
 			'query_args' => WP_DEBUG ? $args : null,
 		];
 
@@ -138,6 +147,9 @@ class EtchFacets_Ajax_Handler {
 		$sources       = $this->sanitize_sources( is_array( $raw_sources ) ? $raw_sources : [] );
 		$logic         = $this->sanitize_logic( is_array( $raw_logic ) ? $raw_logic : [] );
 		$query_context = $this->sanitize_query_context( is_array( $raw_context ) ? $raw_context : [] );
+
+		// See handle_filter() — echoed back only, not used for query building.
+		$group = sanitize_key( $_POST['group'] ?? 'main' );
 
 		// 3. Resolve the geo facet and its coordinate meta keys.
 		$geo_facet = '';
@@ -284,6 +296,7 @@ class EtchFacets_Ajax_Handler {
 			'markers'   => array_values( $markers ),
 			'total'     => count( $markers ),
 			'truncated' => $truncated,
+			'group'     => $group,
 		] );
 	}
 

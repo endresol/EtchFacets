@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Plugin Name: EtchFacets
  * Description: Faceted search engine for EtchWP
- * Version: 0.2.0
+ * Version: 0.3.0
  * Author: EtchFacets
  * Requires PHP: 8.1
  * Requires at least: 5.9
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ETCHFACETS_VERSION', '0.2.0' );
+define( 'ETCHFACETS_VERSION', '0.3.0' );
 define( 'ETCHFACETS_PLUGIN_FILE', __FILE__ );
 define( 'ETCHFACETS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETCHFACETS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -24,6 +24,7 @@ require_once ETCHFACETS_PLUGIN_DIR . 'includes/class-query-builder.php';
 require_once ETCHFACETS_PLUGIN_DIR . 'includes/class-count-calculator.php';
 require_once ETCHFACETS_PLUGIN_DIR . 'includes/class-ajax-handler.php';
 require_once ETCHFACETS_PLUGIN_DIR . 'includes/class-facet-renderer.php';
+require_once ETCHFACETS_PLUGIN_DIR . 'includes/class-choices-rest.php';
 
 // GitHub-based auto-updates via plugin-update-checker (PUC).
 require_once ETCHFACETS_PLUGIN_DIR . 'includes/plugin-update-checker/plugin-update-checker.php';
@@ -51,15 +52,47 @@ function etchfacets_init(): void {
 
 	$renderer = new EtchFacets_Facet_Renderer();
 	$renderer->init();
+
+	$choices_rest = new EtchFacets_Choices_Rest();
+	$choices_rest->init();
 }
 
 add_action( 'pre_get_posts', 'etchfacets_filter_query' );
 
 /**
- * Parse facet params from the current URL.
- * Cached statically so we only parse once per request.
+ * Split a `_...` GET param key into the instance (group) it belongs to and
+ * its base name within that group.
  *
- * @return array|null ['facets' => [...], 'sources' => [...], 'logic' => [...], 'args' => [...]] or null.
+ * The "main" instance's params are unprefixed (`_foo`) for backward
+ * compatibility with existing bookmarked/shared URLs — anything not matching
+ * the prefixed form below falls into that group. Any other instance's params
+ * are prefixed with its group id (`_{group}__foo`, e.g. `_ef-0__category`).
+ * Mirrors `parseParamKey()` in assets/js/etchfacets.js — keep both in sync.
+ *
+ * @param string $key The raw GET param key (including its leading `_`).
+ * @return array{group: string, base: string}|null
+ */
+function etchfacets_parse_param_key( string $key ): ?array {
+	if ( 0 !== strpos( $key, '_' ) ) {
+		return null;
+	}
+
+	// Group class includes "_" (a sanitize_key'd override value can contain
+	// one) and matches greedily so the LAST "__" in the key is treated as
+	// the group/base separator.
+	if ( preg_match( '/^_([a-zA-Z0-9_-]+)__(.+)$/', $key, $matches ) ) {
+		return [ 'group' => $matches[1], 'base' => $matches[2] ];
+	}
+
+	return [ 'group' => 'main', 'base' => substr( $key, 1 ) ];
+}
+
+/**
+ * Parse facet params from the current URL, bucketed per facet/listing
+ * instance (group). Cached statically so we only parse once per request.
+ *
+ * @return array<string, array{facets: array, sources: array, logic: array, args: array, post_type: string, page: int}>|null
+ *         Keyed by group id, or null if the URL carries no recognized state.
  */
 function etchfacets_parse_url_params(): ?array {
 	static $parsed = null;
@@ -74,53 +107,110 @@ function etchfacets_parse_url_params(): ?array {
 		return null;
 	}
 
-	$facets  = [];
-	$sources = [];
-	$logic   = [];
+	// Bucket every recognized param by the instance (group) it belongs to.
+	$buckets = [];
 
 	foreach ( $_GET as $key => $value ) {
-		// Skip _src_ and _logic_ params — they're metadata, not facet values.
-		if ( 0 !== strpos( $key, '_' ) || 0 === strpos( $key, '_src_' ) || 0 === strpos( $key, '_logic_' ) ) {
+		$parsed_key = etchfacets_parse_param_key( (string) $key );
+		if ( ! $parsed_key ) {
 			continue;
 		}
 
-		$facet_name = sanitize_key( substr( $key, 1 ) );
-		if ( empty( $facet_name ) ) {
+		$group = sanitize_key( $parsed_key['group'] );
+		$base  = $parsed_key['base'];
+		if ( empty( $group ) ) {
 			continue;
 		}
 
-		$source_key = '_src_' . $facet_name;
-		if ( ! isset( $_GET[ $source_key ] ) ) {
+		if ( ! isset( $buckets[ $group ] ) ) {
+			$buckets[ $group ] = [
+				'raw_facets' => [],
+				'src'        => [],
+				'logic'      => [],
+				'pt'         => '',
+				'page'       => 1,
+			];
+		}
+
+		if ( 0 === strpos( $base, 'src_' ) ) {
+			$facet_name = sanitize_key( substr( $base, 4 ) );
+			if ( $facet_name ) {
+				$buckets[ $group ]['src'][ $facet_name ] = sanitize_text_field( wp_unslash( $value ) );
+			}
 			continue;
 		}
 
-		$source = sanitize_text_field( wp_unslash( $_GET[ $source_key ] ) );
-		$values = array_map( 'sanitize_text_field', explode( ',', wp_unslash( $value ) ) );
+		if ( 0 === strpos( $base, 'logic_' ) ) {
+			$facet_name = sanitize_key( substr( $base, 6 ) );
+			if ( $facet_name ) {
+				$buckets[ $group ]['logic'][ $facet_name ] = sanitize_key( wp_unslash( $value ) );
+			}
+			continue;
+		}
 
-		$facets[ $facet_name ]  = $values;
-		$sources[ $facet_name ] = $source;
-		$logic[ $facet_name ]   = sanitize_key( $_GET[ '_logic_' . $facet_name ] ?? 'or' );
+		if ( 'pt' === $base ) {
+			$buckets[ $group ]['pt'] = sanitize_key( wp_unslash( $value ) );
+			continue;
+		}
+
+		if ( 'page' === $base ) {
+			$page                      = absint( $value );
+			$buckets[ $group ]['page'] = $page < 1 ? 1 : $page;
+			continue;
+		}
+
+		$facet_name = sanitize_key( $base );
+		if ( $facet_name ) {
+			$buckets[ $group ]['raw_facets'][ $facet_name ] = wp_unslash( $value );
+		}
 	}
 
-	// Pagination — parsed independently of facets so a bare page-N request
-	// (no active filters) still gets its 'paged' arg applied below.
-	$page = isset( $_GET['_page'] ) ? absint( $_GET['_page'] ) : 1;
-	if ( $page < 1 ) {
-		$page = 1;
-	}
-
-	if ( empty( $facets ) && $page <= 1 ) {
+	if ( empty( $buckets ) ) {
 		return null;
 	}
 
-	// The listing's target post type (sent by the JS as _pt). Used to scope
-	// filtering to the listing query only.
-	$post_type = isset( $_GET['_pt'] ) ? sanitize_key( wp_unslash( $_GET['_pt'] ) ) : '';
-
 	$query_builder = new EtchFacets_Query_Builder();
-	$args          = $query_builder->build_query_args( $facets, $sources, $logic, [] );
+	$groups        = [];
 
-	$parsed = compact( 'facets', 'sources', 'logic', 'args', 'post_type', 'page' );
+	foreach ( $buckets as $group => $bucket ) {
+		$facets  = [];
+		$sources = [];
+		$logic   = [];
+
+		foreach ( $bucket['raw_facets'] as $facet_name => $raw_value ) {
+			// A facet param with no matching _src_ companion carries no
+			// resolvable source — skip it (same as a single-instance page).
+			if ( ! isset( $bucket['src'][ $facet_name ] ) ) {
+				continue;
+			}
+
+			$facets[ $facet_name ]  = array_map( 'sanitize_text_field', explode( ',', $raw_value ) );
+			$sources[ $facet_name ] = $bucket['src'][ $facet_name ];
+			$logic[ $facet_name ]   = $bucket['logic'][ $facet_name ] ?? 'or';
+		}
+
+		// Nothing to filter and no pagination for this instance — skip it.
+		if ( empty( $facets ) && $bucket['page'] <= 1 ) {
+			continue;
+		}
+
+		$args = $query_builder->build_query_args( $facets, $sources, $logic, [] );
+
+		$groups[ $group ] = [
+			'facets'    => $facets,
+			'sources'   => $sources,
+			'logic'     => $logic,
+			'args'      => $args,
+			'post_type' => $bucket['pt'],
+			'page'      => $bucket['page'],
+		];
+	}
+
+	if ( empty( $groups ) ) {
+		return null;
+	}
+
+	$parsed = $groups;
 	return $parsed;
 }
 
@@ -128,7 +218,12 @@ function etchfacets_parse_url_params(): ?array {
  * Modify WP_Query based on _facet URL parameters.
  *
  * Only applies to queries whose post_type matches the faceted content,
- * preventing menu queries, widget queries, etc. from being affected.
+ * preventing menu queries, widget queries, etc. from being affected. Runs
+ * once per facet/listing instance (group) found in the URL — each group's
+ * guard independently decides whether it applies to this particular query,
+ * so two instances targeting different post types never leak into each
+ * other's queries, and a query that genuinely belongs to neither is left
+ * untouched.
  *
  * @param WP_Query $query The query to modify.
  */
@@ -146,91 +241,93 @@ function etchfacets_filter_query( WP_Query $query ): void {
 		return;
 	}
 
-	$parsed = etchfacets_parse_url_params();
-	if ( ! $parsed ) {
+	$groups = etchfacets_parse_url_params();
+	if ( ! $groups ) {
 		return;
 	}
 
-	$args        = $parsed['args'];
-	$target_type = $parsed['post_type'] ?? '';
+	foreach ( $groups as $parsed ) {
+		$args        = $parsed['args'];
+		$target_type = $parsed['post_type'] ?? '';
 
-	// Determine this query's post type(s).
-	$query_post_type = $query->get( 'post_type' );
+		// Determine this query's post type(s).
+		$query_post_type = $query->get( 'post_type' );
 
-	// Scope filtering to the listing's post type. Etch renders each card by
-	// running additional secondary queries (for related posts, meta, etc.);
-	// without this guard the facet meta_query would leak into those and blank
-	// out the card data. If the target post type is known, only filter queries
-	// for that post type.
-	if ( $target_type ) {
-		$query_types = (array) ( $query_post_type ?: 'post' );
-		if ( ! in_array( $target_type, $query_types, true ) ) {
-			return;
-		}
-	}
-
-	// If we have taxonomy filters, check if this query's post type uses those taxonomies.
-	if ( isset( $args['tax_query'] ) ) {
-		$applies = false;
-		foreach ( $args['tax_query'] as $clause ) {
-			if ( ! is_array( $clause ) || ! isset( $clause['taxonomy'] ) ) {
+		// Scope filtering to the listing's post type. Etch renders each card by
+		// running additional secondary queries (for related posts, meta, etc.);
+		// without this guard the facet meta_query would leak into those and blank
+		// out the card data. If the target post type is known, only filter queries
+		// for that post type.
+		if ( $target_type ) {
+			$query_types = (array) ( $query_post_type ?: 'post' );
+			if ( ! in_array( $target_type, $query_types, true ) ) {
 				continue;
 			}
-			$tax_object = get_taxonomy( $clause['taxonomy'] );
-			if ( $tax_object ) {
-				// Check if the query's post type is in this taxonomy's object_type.
-				$post_types = (array) ( $query_post_type ?: 'post' );
-				foreach ( $post_types as $pt ) {
-					if ( in_array( $pt, $tax_object->object_type, true ) ) {
-						$applies = true;
-						break 2;
+		}
+
+		// If we have taxonomy filters, check if this query's post type uses those taxonomies.
+		if ( isset( $args['tax_query'] ) ) {
+			$applies = false;
+			foreach ( $args['tax_query'] as $clause ) {
+				if ( ! is_array( $clause ) || ! isset( $clause['taxonomy'] ) ) {
+					continue;
+				}
+				$tax_object = get_taxonomy( $clause['taxonomy'] );
+				if ( $tax_object ) {
+					// Check if the query's post type is in this taxonomy's object_type.
+					$post_types = (array) ( $query_post_type ?: 'post' );
+					foreach ( $post_types as $pt ) {
+						if ( in_array( $pt, $tax_object->object_type, true ) ) {
+							$applies = true;
+							break 2;
+						}
 					}
 				}
 			}
+
+			if ( $applies ) {
+				$existing = $query->get( 'tax_query' ) ?: [];
+				$query->set( 'tax_query', array_merge( $existing, $args['tax_query'] ) );
+			}
 		}
 
-		if ( $applies ) {
-			$existing = $query->get( 'tax_query' ) ?: [];
-			$query->set( 'tax_query', array_merge( $existing, $args['tax_query'] ) );
+		if ( isset( $args['meta_query'] ) ) {
+			$existing = $query->get( 'meta_query' ) ?: [];
+
+			// Group rather than flat-merge: a flat merge would fold the facet
+			// clauses into an existing top-level `relation => OR`, which would
+			// loosen (not narrow) the query — e.g. the map bbox would become an
+			// OR branch and leak in posts outside the viewport.
+			if ( ! empty( $existing ) ) {
+				$query->set( 'meta_query', [
+					'relation' => 'AND',
+					$existing,
+					$args['meta_query'],
+				] );
+			} else {
+				$query->set( 'meta_query', $args['meta_query'] );
+			}
 		}
-	}
 
-	if ( isset( $args['meta_query'] ) ) {
-		$existing = $query->get( 'meta_query' ) ?: [];
-
-		// Group rather than flat-merge: a flat merge would fold the facet
-		// clauses into an existing top-level `relation => OR`, which would
-		// loosen (not narrow) the query — e.g. the map bbox would become an
-		// OR branch and leak in posts outside the viewport.
-		if ( ! empty( $existing ) ) {
-			$query->set( 'meta_query', [
-				'relation' => 'AND',
-				$existing,
-				$args['meta_query'],
-			] );
-		} else {
-			$query->set( 'meta_query', $args['meta_query'] );
+		if ( isset( $args['s'] ) ) {
+			$query->set( 's', $args['s'] );
 		}
-	}
 
-	if ( isset( $args['s'] ) ) {
-		$query->set( 's', $args['s'] );
-	}
+		if ( isset( $args['author__in'] ) ) {
+			$query->set( 'author__in', $args['author__in'] );
+		}
 
-	if ( isset( $args['author__in'] ) ) {
-		$query->set( 'author__in', $args['author__in'] );
-	}
+		if ( isset( $args['orderby'] ) ) {
+			$query->set( 'orderby', $args['orderby'] );
+		}
 
-	if ( isset( $args['orderby'] ) ) {
-		$query->set( 'orderby', $args['orderby'] );
-	}
+		if ( isset( $args['order'] ) ) {
+			$query->set( 'order', $args['order'] );
+		}
 
-	if ( isset( $args['order'] ) ) {
-		$query->set( 'order', $args['order'] );
-	}
-
-	if ( ! empty( $parsed['page'] ) && $parsed['page'] > 1 ) {
-		$query->set( 'paged', $parsed['page'] );
+		if ( ! empty( $parsed['page'] ) && $parsed['page'] > 1 ) {
+			$query->set( 'paged', $parsed['page'] );
+		}
 	}
 }
 
@@ -353,11 +450,16 @@ add_filter( 'etch_autocompletion_classes', 'etchfacets_register_classes' );
  */
 function etchfacets_register_classes( array $classes ): array {
 	return array_merge( $classes, [
+		'etchfacets-instance',
 		'etchfacets-template',
 		'etchfacets-loading',
 		'etchfacet-count',
 		'etchfacet-ghost',
 		'etchfacet-hidden',
+		'etchfacets-facet-header',
+		'etchfacets-facet-choices',
+		'etchfacets-facet-toggle',
+		'etchfacets-facet-toggle-icon',
 		'etchfacets-map',
 		'etchfacets-map--loading',
 		'etchfacets-map--error',

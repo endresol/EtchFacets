@@ -363,10 +363,13 @@ class EtchFacets_Facet_Renderer {
 	 * For taxonomy sources, retrieves terms via get_terms().
 	 * For meta sources, queries distinct meta values from the database.
 	 *
+	 * Public so EtchFacets_Choices_Rest can reuse the same lookup logic for
+	 * the native-Etch-component REST endpoint instead of duplicating it.
+	 *
 	 * @param string $source The facet source (e.g., "taxonomy:category", "meta:color").
 	 * @return array Array of choices, each with 'value', 'label', and 'count' keys.
 	 */
-	private function get_choices( string $source ): array {
+	public function get_choices( string $source ): array {
 		$parts = explode( ':', $source, 2 );
 		if ( count( $parts ) !== 2 ) {
 			return [];

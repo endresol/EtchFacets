@@ -19,7 +19,23 @@
 }
 
 .etchfacet-hidden {
-	display: none;
+	display: none !important;
+}
+
+/* ── Collapsible facet — roll up/down animation ──
+   JS (initCollapsibleFacets) sets an inline max-height/opacity on click, measured
+   from the choice list's real scrollHeight. This just supplies the transition and
+   the pre-JS initial state (matches the server-rendered data-etchfacet-open so
+   there's no flash of open content before JS runs). Scoped to collapsible facets
+   only — non-collapsible facets' choice lists are untouched. */
+.etchfacets-facet[data-etchfacet-collapsible="true"] .etchfacets-facet-choices {
+	overflow: hidden;
+	transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+
+.etchfacets-facet[data-etchfacet-collapsible="true"][data-etchfacet-open="false"] .etchfacets-facet-choices {
+	max-height: 0;
+	opacity: 0;
 }
 
 /* ── Hierarchical tree ── */
@@ -98,13 +114,150 @@
 	color: var(--neutral-900, #111827);
 }
 
+.etchfacets-range-separator {
+	color: var(--neutral-400, #9ca3af);
+}
+
+/* ── Range/slider value row — "3 – 25 min ↺" below the track ── */
+.etchfacets-range-value {
+	font-variant-numeric: tabular-nums;
+	min-width: 1.5em;
+	text-align: center;
+}
+
+/* ── Range/slider track — two overlaid native range inputs sharing one
+   visual track. Each thumb's own inline `oninput` handler (the only
+   scripting surface available on an Etch element) positions a real sibling
+   `.etchfacets-range-fill` div directly via `.style.left`/`.style.right`
+   and clamps against the other thumb so they can't cross — this avoids the
+   CSS custom-property + `::after` pseudo-element approach, which cannot be
+   restyled per-browser consistently. The plugin's own JS re-invokes each
+   handler via the `.oninput` property after every server bounds sync/reset,
+   keeping the fill bar and labels accurate. ── */
+.etchfacets-range-track {
+	position: relative;
+	height: 1.75rem;
+	display: flex;
+	align-items: center;
+	margin-block-start: var(--space-2xs, 0.25em);
+}
+
+.etchfacets-range-line {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 50%;
+	height: 4px;
+	transform: translateY(-50%);
+	background: var(--neutral-200, #e5e7eb);
+	border-radius: 999px;
+}
+
+.etchfacets-range-fill {
+	position: absolute;
+	top: 50%;
+	height: 4px;
+	transform: translateY(-50%);
+	background: var(--etchfacets-accent, #4f46e5);
+	border-radius: 999px;
+}
+
+.etchfacets-range-track .etchfacet-min,
+.etchfacets-range-track .etchfacet-max {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	margin: 0;
+	appearance: none;
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	background: transparent;
+	pointer-events: none;
+	cursor: pointer;
+}
+
+.etchfacets-range-track .etchfacet-min {
+	z-index: 3;
+}
+
+.etchfacets-range-track .etchfacet-max {
+	z-index: 4;
+}
+
+/* Thumb-only pointer-events trick so both overlaid inputs stay draggable —
+   Firefox has no supported way to restyle the native thumb via a stylesheet
+   API here, so it falls back to the browser default. */
+.etchfacets-range-track .etchfacet-min::-webkit-slider-runnable-track,
+.etchfacets-range-track .etchfacet-max::-webkit-slider-runnable-track {
+	-webkit-appearance: none;
+	background: transparent;
+	height: 4px;
+}
+
+.etchfacets-range-track .etchfacet-min::-webkit-slider-thumb,
+.etchfacets-range-track .etchfacet-max::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	appearance: none;
+	pointer-events: auto;
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	background: #fff;
+	border: 1px solid var(--neutral-300, #ccc);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
+	cursor: pointer;
+	margin-top: -7px;
+}
+
 /* ── Checkbox / radio labels ── */
-.etchfacets-checkbox {
+.etchfacets-checkbox,
+.etchfacets-radio {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.4rem;
 	cursor: pointer;
 	font-size: 0.9375rem;
+}
+
+/* ── Search input ── */
+.etchfacets-search-input {
+	width: 100%;
+}
+
+/* ── Dropdown select ── */
+.etchfacets-select {
+	width: 100%;
+}
+
+/* ── Reset button ── */
+.etchfacets-reset {
+	cursor: pointer;
+}
+
+/* ── Pagination & load more ── */
+.etchfacets-pagination {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.etchfacets-pagination-prev,
+.etchfacets-pagination-next,
+.etchfacets-load-more {
+	cursor: pointer;
+}
+
+.etchfacets-pagination-prev:disabled,
+.etchfacets-pagination-next:disabled,
+.etchfacets-load-more:disabled,
+.etchfacets-load-more--exhausted {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.etchfacets-pagination-status {
+	font-size: 0.8125rem;
+	color: var(--neutral-500, #6b7280);
 }
 
 /* ── Count badge ── */
@@ -126,10 +279,7 @@
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 0.5rem;
-}
-
-.etchfacets-active-filters.etchfacets-active-filters--empty {
-	display: none;
+	min-height: 1.75rem;
 }
 
 .etchfacets-active-filter {

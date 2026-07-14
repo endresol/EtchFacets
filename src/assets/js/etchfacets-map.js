@@ -138,6 +138,30 @@
 		return keys.map((k) => k + '=' + [].concat(facets[k]).join(',')).join('&');
 	}
 
+	/**
+	 * Resolve which facet/listing instance this map belongs to, so it only
+	 * reacts to that instance's selection changes and drives that instance's
+	 * refresh — not some other instance sharing the page. Mirrors the same
+	 * resolution etchfacets.js uses for its own `.etchfacets-instance`
+	 * wrappers: an explicit `data-etchfacets-group` (on the map itself, or
+	 * its nearest wrapper) wins; otherwise the wrapper's DOM-order index
+	 * among all wrappers on the page (`ef-0`, `ef-1`, ...); with no wrapper
+	 * at all, the legacy single-instance `'main'` group.
+	 */
+	function resolveGroup(el) {
+		const explicit = el.getAttribute('data-etchfacets-group');
+		if (explicit) return explicit;
+
+		const wrapper = el.closest('.etchfacets-instance');
+		if (!wrapper) return 'main';
+
+		const wrapperGroup = wrapper.getAttribute('data-etchfacets-group');
+		if (wrapperGroup) return wrapperGroup;
+
+		const index = Array.from(document.querySelectorAll('.etchfacets-instance')).indexOf(wrapper);
+		return `ef-${index}`;
+	}
+
 	// -------------------------------------------------------------------------
 	// Per-map controller
 	// -------------------------------------------------------------------------
@@ -145,6 +169,7 @@
 	function initMap(el, gmaps, clustererLib, config) {
 		const facetName     = el.getAttribute('data-etchfacet') || 'map';
 		const colorTaxonomy = el.getAttribute('data-etchfacet-color-taxonomy') || '';
+		const group         = resolveGroup(el);
 
 		// Parse data attributes.
 		const centerAttr = (el.getAttribute('data-etchfacet-center') || '0,0').split(',');
@@ -217,7 +242,7 @@
 			lastSearchedBounds = JSON.stringify(value);
 			hideSearchAreaButton();
 			if (window.EtchFacets) {
-				window.EtchFacets.refresh();
+				window.EtchFacets.refresh(group);
 			}
 		});
 
@@ -353,7 +378,7 @@
 			const api = window.EtchFacets;
 			if (!api) return;
 
-			const selections = api.getSelections();
+			const selections = api.getSelections(group);
 			const signature = selectionSignature(selections, facetName);
 
 			// Skip refetching when only the viewport changed (markers are
@@ -364,7 +389,7 @@
 				return;
 			}
 
-			const queryContext = api.getQueryContext ? api.getQueryContext() : {};
+			const queryContext = api.getQueryContext ? api.getQueryContext(group) : {};
 
 			const formData = new FormData();
 			formData.append('action', 'etchfacets_map');
@@ -373,6 +398,7 @@
 			formData.append('sources', JSON.stringify(selections.sources));
 			formData.append('logic', JSON.stringify(selections.logic));
 			formData.append('query_context', JSON.stringify(queryContext || {}));
+			formData.append('group', group);
 
 			// Cancel any in-flight marker request and guard against out-of-order
 			// responses (a slower earlier request must not overwrite a newer one).
@@ -464,11 +490,23 @@
 
 		// --- Wiring to the facet pipeline -------------------------------------------
 
-		// Refresh markers whenever non-viewport selections change.
-		document.addEventListener('etchfacets:selectionChanged', fetchMarkers);
+		/** True when a dispatched etchfacets:* event belongs to this map's own instance. */
+		function isOwnEvent(e) {
+			const eventGroup = (e.detail && e.detail.group) || 'main';
+			return eventGroup === group;
+		}
+
+		// Refresh markers whenever non-viewport selections change — but only
+		// for this map's own instance; a sibling instance's selections changing
+		// must not refetch this map's markers.
+		document.addEventListener('etchfacets:selectionChanged', (e) => {
+			if (!isOwnEvent(e)) return;
+			fetchMarkers();
+		});
 
 		// Reset: drop the viewport facet and restore the initial view.
-		document.addEventListener('etchfacets:cleared', () => {
+		document.addEventListener('etchfacets:cleared', (e) => {
+			if (!isOwnEvent(e)) return;
 			el.removeAttribute('data-etchfacet-value');
 			lastSearchedBounds = null;
 			userMoved = false;

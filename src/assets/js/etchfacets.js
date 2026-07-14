@@ -1,9 +1,21 @@
 /**
  * EtchFacets — Frontend AJAX Controller
  *
- * Vanilla JS (no dependencies). Auto-discovers facet elements and the listing
- * template on the page, handles user interactions, sends AJAX requests, and
- * updates the DOM.
+ * Vanilla JS (no dependencies). Auto-discovers one or more independent
+ * facet/listing instances on the page and drives each one separately.
+ *
+ * An "instance" is either:
+ *   - a `.etchfacets-instance` wrapper element (new — everything inside its
+ *     Slot is scoped to it by plain DOM containment, no matching id needed), or
+ *   - if no wrapper exists anywhere on the page, the whole `document` is
+ *     treated as a single implicit "main" instance — this is the legacy,
+ *     pre-wrapper behavior, preserved unchanged for sites still using bare
+ *     shortcodes.
+ *
+ * A component that can't live inside its wrapper's DOM subtree for layout
+ * reasons (e.g. a Map broken out of a grid) can opt back in to a specific
+ * instance via an explicit `data-etchfacets-group` attribute matching that
+ * instance's group id — see scopedQueryAll() below.
  *
  * @package EtchFacets
  */
@@ -22,20 +34,180 @@
 		};
 	}
 
+	/**
+	 * Wire up the optional collapse/expand toggle on facets with
+	 * `data-etchfacet-collapsible="true"` (the "Facet - Checkboxes" component's
+	 * Collapsible/Start Open props). Pure local UI state, unrelated to any
+	 * instance/group — the facet's own DOM never gets replaced by AJAX, so this
+	 * only needs to run once at page load.
+	 */
+	function initCollapsibleFacets() {
+		document.querySelectorAll('[data-etchfacet-collapsible="true"]').forEach((facetEl) => {
+			const toggle = facetEl.querySelector('.etchfacets-facet-toggle');
+			const choices = facetEl.querySelector('.etchfacets-facet-choices');
+			if (!toggle || !choices) return;
+
+			// Animate max-height to the choice list's actual measured height
+			// (not a large fixed cap) so the roll-up/down transition tracks the
+			// real content size instead of "snapping" open almost instantly —
+			// scrollHeight is measurable even while the element is visually
+			// collapsed via CSS (overflow: hidden doesn't affect scrollHeight).
+			const setOpen = (open) => {
+				facetEl.setAttribute('data-etchfacet-open', String(open));
+				toggle.classList.toggle('is-open', open);
+				toggle.setAttribute('aria-expanded', String(open));
+				choices.style.maxHeight = open ? `${choices.scrollHeight}px` : '0px';
+				choices.style.opacity = open ? '1' : '0';
+			};
+
+			setOpen(facetEl.getAttribute('data-etchfacet-open') !== 'false');
+
+			toggle.addEventListener('click', () => setOpen(!toggle.classList.contains('is-open')));
+		});
+	}
+
+	/**
+	 * Parse a URL param key into { group, base }.
+	 * The "main" instance's params are unprefixed (`_foo`) for backward
+	 * compatibility with existing bookmarked/shared URLs. Any other instance's
+	 * params are prefixed with its group id (`_{group}__foo`).
+	 */
+	function parseParamKey(key) {
+		if (!key.startsWith('_')) return null;
+		// Group class includes "_" (a sanitize_key'd override value can contain
+		// one) and matches greedily so the LAST "__" in the key is treated as
+		// the group/base separator.
+		const match = key.match(/^_([a-zA-Z0-9_-]+)__(.+)$/);
+		if (match) return { group: match[1], base: match[2] };
+		return { group: 'main', base: key.slice(1) };
+	}
+
+	// Registry of initialized instances, keyed by group id — backs the
+	// instance-aware window.EtchFacets dispatcher built after DOMContentLoaded.
+	const instances = new Map();
+
 	// -------------------------------------------------------------------------
 	// Initialisation — wait for DOM
 	// -------------------------------------------------------------------------
 
 	document.addEventListener('DOMContentLoaded', () => {
+		const wrappers = document.querySelectorAll('.etchfacets-instance');
+		wrappers.forEach((el, i) => {
+			const group = el.getAttribute('data-etchfacets-group') || `ef-${i}`;
+			initInstance(el, group);
+		});
+
+		// Legacy support: any .etchfacets-template that ISN'T inside a wrapper
+		// is treated as the implicit "main" instance, exactly like before
+		// wrappers existed — a page can have both a new wrapper-based instance
+		// AND older bare-shortcode markup at the same time; adding one must
+		// never stop the other from initializing.
+		const hasUnwrappedTemplate = Array.from(document.querySelectorAll('.etchfacets-template')).some(
+			(el) => !el.closest('.etchfacets-instance')
+		);
+		if (hasUnwrappedTemplate) {
+			initInstance(document, 'main');
+		}
+
+		initCollapsibleFacets();
+
+		// ---------------------------------------------------------------------
+		// Public API — instance-aware, defaults to 'main' so existing
+		// single-instance callers (window.EtchFacets.refresh(), etc.) keep
+		// working unchanged.
+		// ---------------------------------------------------------------------
+
+		window.EtchFacets = {
+			refresh: (group = 'main') => instances.get(group)?.refresh(),
+			reset: (group = 'main') => instances.get(group)?.reset(),
+			getSelections: (group = 'main') => instances.get(group)?.getSelections(),
+			getQueryContext: (group = 'main') => instances.get(group)?.getQueryContext(),
+			on: (event, callback, group = 'main') => {
+				document.addEventListener(`etchfacets:${event}`, (e) => {
+					const eventGroup = (e.detail && e.detail.group) || 'main';
+					if (eventGroup === group) callback(e);
+				});
+			},
+		};
+	});
+
+	/**
+	 * Initialize one facet/listing instance, scoped to `scopeEl`.
+	 *
+	 * @param {Document|Element} scopeEl The instance's containment scope —
+	 *                                   either `document` (legacy) or a
+	 *                                   `.etchfacets-instance` wrapper.
+	 * @param {string} group             This instance's id (used for URL/AJAX
+	 *                                   param namespacing and event filtering).
+	 */
+	function initInstance(scopeEl, group) {
+		// --- Scoped discovery helpers ------------------------------------------
+
+		/**
+		 * Elements matching `selector` inside this instance's own DOM subtree,
+		 * plus any page-wide element that explicitly opts into this instance via
+		 * a matching `data-etchfacets-group` attribute (the escape hatch for
+		 * components that can't be nested inside the wrapper for layout reasons).
+		 * When `scopeEl` is `document` (the legacy/"main" instance) this is every
+		 * matching element on the page that ISN'T already claimed by some other
+		 * `.etchfacets-instance` wrapper — never every match unconditionally,
+		 * otherwise a page mixing a wrapper with older bare markup would have
+		 * the wrapper's own elements double-bound (once by their wrapper's
+		 * instance, once by this whole-document fallback).
+		 */
+		function scopedQueryAll(selector) {
+			const contained =
+				scopeEl === document
+					? Array.from(document.querySelectorAll(selector)).filter((el) => !el.closest('.etchfacets-instance'))
+					: Array.from(scopeEl.querySelectorAll(selector));
+
+			if (scopeEl === document) return contained;
+
+			const detached = Array.from(
+				document.querySelectorAll(`${selector}[data-etchfacets-group="${group}"]`)
+			).filter((el) => !contained.includes(el));
+
+			return contained.concat(detached);
+		}
+
+		function scopedQueryOne(selector) {
+			return scopedQueryAll(selector)[0] || null;
+		}
+
+		/** Find a facet's container element by name, scoped to this instance. */
+		function findFacetEl(name) {
+			if (scopeEl === document) {
+				const matches = document.querySelectorAll(`[data-etchfacet="${name}"]`);
+				for (const el of matches) {
+					if (!el.closest('.etchfacets-instance')) return el;
+				}
+			} else {
+				const el = scopeEl.querySelector(`[data-etchfacet="${name}"]`);
+				if (el) return el;
+			}
+			return document.querySelector(`[data-etchfacet="${name}"][data-etchfacets-group="${group}"]`);
+		}
+
+		/** Prefix a URL param base name per this instance's group. */
+		function gp(base) {
+			return group === 'main' ? `_${base}` : `_${group}__${base}`;
+		}
+
 		// --- Auto-discovery ---------------------------------------------------
 
-		const template = document.querySelector('.etchfacets-template');
-		if (!template) return; // No facets on this page — exit silently.
+		// For the legacy/"main" instance, the template must be one NOT already
+		// claimed by some other .etchfacets-instance wrapper elsewhere on the
+		// page (see scopedQueryAll() above for why).
+		const template =
+			scopeEl === document
+				? Array.from(document.querySelectorAll('.etchfacets-template')).find((el) => !el.closest('.etchfacets-instance'))
+				: scopeEl.querySelector('.etchfacets-template');
+		if (!template) return; // No listing in this instance — nothing to drive.
 
-		const facetElements  = document.querySelectorAll('[data-etchfacet]');
-		const resetButtons   = document.querySelectorAll('.etchfacets-reset');
-		const totalElements  = document.querySelectorAll('[data-etchfacets-total]');
-		const activeFiltersContainer = document.querySelector('[data-etchfacets-active-filters]');
+		const facetElements = scopedQueryAll('[data-etchfacet]');
+		const resetButtons = scopedQueryAll('.etchfacets-reset');
+		const totalElements = scopedQueryAll('[data-etchfacets-total]');
+		const activeFiltersContainer = scopedQueryOne('[data-etchfacets-active-filters]');
 
 		// Facets (keyed by their [data-etchfacet] container) whose range/slider/
 		// date inputs the user has genuinely dragged/typed into. This is
@@ -50,7 +222,7 @@
 
 		// --- Configuration ----------------------------------------------------
 
-		const config    = window.etchfacetsConfig || {};
+		const config = window.etchfacetsConfig || {};
 		const baseQuery = parseQueryConfig(template);
 
 		/**
@@ -76,10 +248,10 @@
 
 			// Read individual data attributes.
 			return {
-				post_type:      el.getAttribute('data-etchfacets-post-type') || 'post',
+				post_type: el.getAttribute('data-etchfacets-post-type') || 'post',
 				posts_per_page: parseInt(el.getAttribute('data-etchfacets-posts-per-page') || '12', 10),
-				orderby:        el.getAttribute('data-etchfacets-orderby') || 'date',
-				order:          el.getAttribute('data-etchfacets-order') || 'DESC',
+				orderby: el.getAttribute('data-etchfacets-orderby') || 'date',
+				order: el.getAttribute('data-etchfacets-order') || 'DESC',
 			};
 		}
 
@@ -88,26 +260,26 @@
 
 		// Current page number, used to redraw pagination status after each fetch.
 		let currentPage = 1;
-		let maxPages    = 1;
+		let maxPages = 1;
 
 		// ---------------------------------------------------------------------
 		// Selection collection
 		// ---------------------------------------------------------------------
 
 		function collectSelections() {
-			const facets  = {};
+			const facets = {};
 			const sources = {};
-			const logic   = {};
+			const logic = {};
 
 			facetElements.forEach((el) => {
-				const name   = el.getAttribute('data-etchfacet');
+				const name = el.getAttribute('data-etchfacet');
 				const source = el.getAttribute('data-etchfacet-source') || '';
 				const facetLogic = el.getAttribute('data-etchfacet-logic') || 'or';
 
 				// Always register sources and logic so count calculator
 				// can calculate counts for ALL facets, not just active ones.
 				sources[name] = source;
-				logic[name]   = facetLogic;
+				logic[name] = facetLogic;
 
 				let values = [];
 
@@ -207,7 +379,7 @@
 			if (!counts) return;
 
 			for (const [name, choices] of Object.entries(counts)) {
-				const facetEl = document.querySelector(`[data-etchfacet="${name}"]`);
+				const facetEl = findFacetEl(name);
 				if (!facetEl) continue;
 
 				// meta_range facets return { min, max } bounds, not a choices array —
@@ -288,7 +460,7 @@
 		}
 
 		// ---------------------------------------------------------------------
-		// Active filters summary (optional — only runs if the page has a
+		// Active filters summary (optional — only runs if this instance has a
 		// [data-etchfacets-active-filters] container)
 		// ---------------------------------------------------------------------
 
@@ -366,7 +538,7 @@
 				// doesn't belong in a list of things the user can "remove".
 				if (facetEl.getAttribute('data-etchfacet-source') === 'sort') return;
 
-				const facetName  = facetEl.getAttribute('data-etchfacet');
+				const facetName = facetEl.getAttribute('data-etchfacet');
 				const groupLabel = facetGroupLabel(facetEl, facetName);
 
 				// Checkboxes
@@ -460,30 +632,44 @@
 		// ---------------------------------------------------------------------
 
 		/**
+		 * Remove this instance's own params from a URLSearchParams in place —
+		 * used before rebuilding them, so other instances' params on the same
+		 * page are left untouched.
+		 */
+		function clearOwnParams(params) {
+			Array.from(params.keys()).forEach((key) => {
+				const parsed = parseParamKey(key);
+				if (parsed && parsed.group === group) params.delete(key);
+			});
+		}
+
+		/**
 		 * Build a URL with facet params for fetching the filtered page.
 		 * Includes _src_ and _logic_ params so the PHP pre_get_posts hook
-		 * knows how to filter the query.
+		 * knows how to filter the query. Other instances' params (if any) are
+		 * preserved untouched.
 		 */
 		function buildFilterUrl(page = 1) {
 			const selections = collectSelections();
-			const params     = new URLSearchParams();
+			const params = new URLSearchParams(window.location.search);
+			clearOwnParams(params);
 
 			// Add facet values + source + logic for each active facet.
 			for (const [name, values] of Object.entries(selections.facets)) {
-				params.set(`_${name}`, values.join(','));
-				params.set(`_src_${name}`, selections.sources[name] || '');
-				params.set(`_logic_${name}`, selections.logic[name] || 'or');
+				params.set(gp(name), values.join(','));
+				params.set(gp(`src_${name}`), selections.sources[name] || '');
+				params.set(gp(`logic_${name}`), selections.logic[name] || 'or');
 			}
 
 			// Tell PHP which post type the listing targets so it only filters
 			// that query — not the secondary queries Etch runs to render each
 			// card's related/meta data.
 			if (baseQuery && baseQuery.post_type) {
-				params.set('_pt', baseQuery.post_type);
+				params.set(gp('pt'), baseQuery.post_type);
 			}
 
 			if (page > 1) {
-				params.set('_page', page);
+				params.set(gp('page'), page);
 			}
 
 			const qs = params.toString();
@@ -491,27 +677,29 @@
 		}
 
 		/**
-		 * Update the browser URL (without the _src_ and _logic_ params — keep it clean).
+		 * Update the browser URL (without the _src_ and _logic_ params — keep it
+		 * clean). Other instances' params (if any) are preserved untouched.
 		 */
 		function updateUrl(page = 1) {
 			const selections = collectSelections();
-			const params     = new URLSearchParams();
+			const params = new URLSearchParams(window.location.search);
+			clearOwnParams(params);
 
 			for (const [name, values] of Object.entries(selections.facets)) {
-				params.set(`_${name}`, values.join(','));
+				params.set(gp(name), values.join(','));
 			}
 
 			if (page > 1) {
-				params.set('_page', page);
+				params.set(gp('page'), page);
 			}
 
-			const qs     = params.toString();
+			const qs = params.toString();
 			const newUrl = window.location.pathname + (qs ? `?${qs}` : '');
 			history.pushState(null, '', newUrl);
 		}
 
 		/**
-		 * Populate facet inputs from URL params.
+		 * Populate facet inputs from URL params belonging to this instance.
 		 * Returns true if any facet state was found.
 		 */
 		function populateFromUrl() {
@@ -519,10 +707,12 @@
 			let hasState = false;
 
 			params.forEach((value, key) => {
-				if (!key.startsWith('_') || key.startsWith('_src_') || key.startsWith('_logic_')) return;
+				const parsed = parseParamKey(key);
+				if (!parsed || parsed.group !== group) return;
+				if (parsed.base.startsWith('src_') || parsed.base.startsWith('logic_')) return;
 
-				const facetName = key.slice(1);
-				const facetEl   = document.querySelector(`[data-etchfacet="${facetName}"]`);
+				const facetName = parsed.base;
+				const facetEl = findFacetEl(facetName);
 				if (!facetEl) return;
 
 				const values = value.split(',');
@@ -571,10 +761,14 @@
 
 		function readUrlState() {
 			if (populateFromUrl()) {
-				// Check if the URL has _src_ params (full filter URL) or just
-				// clean params (shared/bookmarked URL like ?_produkt_type=musserende).
-				const params    = new URLSearchParams(window.location.search);
-				const hasSrcParams = Array.from(params.keys()).some((k) => k.startsWith('_src_'));
+				// Check if the URL has this instance's _src_ params (full filter
+				// URL) or just clean params (shared/bookmarked URL like
+				// ?_produkt_type=musserende).
+				const params = new URLSearchParams(window.location.search);
+				const hasSrcParams = Array.from(params.keys()).some((k) => {
+					const parsed = parseParamKey(k);
+					return parsed && parsed.group === group && parsed.base.startsWith('src_');
+				});
 
 				if (hasSrcParams) {
 					// Full URL — server already filtered via pre_get_posts, just get counts.
@@ -615,13 +809,13 @@
 
 			// Loading state.
 			template.classList.add('etchfacets-loading');
-			document.dispatchEvent(new CustomEvent('etchfacets:before-refresh'));
+			document.dispatchEvent(new CustomEvent('etchfacets:before-refresh', { detail: { group } }));
 
 			// Notify decoupled modules (e.g. the map) that selections changed so
 			// they can refresh their own data alongside the listing.
 			document.dispatchEvent(
 				new CustomEvent('etchfacets:selectionChanged', {
-					detail: { selections: collectSelections() },
+					detail: { group, selections: collectSelections() },
 				})
 			);
 
@@ -637,8 +831,8 @@
 				.then((res) => res.text())
 				.then((html) => {
 					// Parse the response HTML and extract the .etchfacets-template content.
-					const parser  = new DOMParser();
-					const doc     = parser.parseFromString(html, 'text/html');
+					const parser = new DOMParser();
+					const doc = parser.parseFromString(html, 'text/html');
 					const newTemplate = doc.querySelector('.etchfacets-template');
 
 					if (newTemplate) {
@@ -656,7 +850,7 @@
 					// Dispatch loaded event.
 					document.dispatchEvent(
 						new CustomEvent('etchfacets:loaded', {
-							detail: { page },
+							detail: { group, page },
 						})
 					);
 
@@ -669,7 +863,7 @@
 				.catch((err) => {
 					if (err.name === 'AbortError') return;
 					template.classList.remove('etchfacets-loading');
-					document.dispatchEvent(new CustomEvent('etchfacets:error'));
+					document.dispatchEvent(new CustomEvent('etchfacets:error', { detail: { group } }));
 					console.error('EtchFacets: page fetch failed', err);
 				});
 		}
@@ -688,6 +882,7 @@
 			formData.append('logic', JSON.stringify(selections.logic));
 			formData.append('page', '1');
 			formData.append('query_context', JSON.stringify(baseQuery));
+			formData.append('group', group);
 
 			fetch(config.ajaxUrl || '', {
 				method: 'POST',
@@ -744,12 +939,12 @@
 		 * page-numbers links attachPaginationListeners() supports.
 		 * Markup: .etchfacets-pagination-prev / -next (buttons) and an
 		 * optional .etchfacets-pagination-status (text) sharing a common
-		 * ancestor. Multiple pager widgets on one page are all kept in sync.
+		 * ancestor. Multiple pager widgets on one instance are all kept in sync.
 		 */
-		const paginationPrevButtons   = document.querySelectorAll('.etchfacets-pagination-prev');
-		const paginationNextButtons   = document.querySelectorAll('.etchfacets-pagination-next');
-		const paginationStatusEls     = document.querySelectorAll('.etchfacets-pagination-status');
-		const loadMoreButtons         = document.querySelectorAll('.etchfacets-load-more');
+		const paginationPrevButtons = scopedQueryAll('.etchfacets-pagination-prev');
+		const paginationNextButtons = scopedQueryAll('.etchfacets-pagination-next');
+		const paginationStatusEls = scopedQueryAll('.etchfacets-pagination-status');
+		const loadMoreButtons = scopedQueryAll('.etchfacets-load-more');
 
 		function updatePaginationUi() {
 			paginationStatusEls.forEach((el) => {
@@ -785,7 +980,7 @@
 			currentController = new AbortController();
 
 			template.classList.add('etchfacets-loading');
-			document.dispatchEvent(new CustomEvent('etchfacets:before-refresh'));
+			document.dispatchEvent(new CustomEvent('etchfacets:before-refresh', { detail: { group } }));
 
 			const filterUrl = buildFilterUrl(nextPage);
 
@@ -796,8 +991,8 @@
 			})
 				.then((res) => res.text())
 				.then((html) => {
-					const parser      = new DOMParser();
-					const doc         = parser.parseFromString(html, 'text/html');
+					const parser = new DOMParser();
+					const doc = parser.parseFromString(html, 'text/html');
 					const newTemplate = doc.querySelector('.etchfacets-template');
 
 					if (newTemplate) {
@@ -813,7 +1008,7 @@
 
 					document.dispatchEvent(
 						new CustomEvent('etchfacets:loaded', {
-							detail: { page: currentPage, appended: true },
+							detail: { group, page: currentPage, appended: true },
 						})
 					);
 
@@ -824,7 +1019,7 @@
 				.catch((err) => {
 					if (err.name === 'AbortError') return;
 					template.classList.remove('etchfacets-loading');
-					document.dispatchEvent(new CustomEvent('etchfacets:error'));
+					document.dispatchEvent(new CustomEvent('etchfacets:error', { detail: { group } }));
 					console.error('EtchFacets: load more failed', err);
 				});
 		}
@@ -896,7 +1091,7 @@
 			});
 
 			// Let decoupled modules (e.g. the map) reset their own state too.
-			document.dispatchEvent(new CustomEvent('etchfacets:cleared'));
+			document.dispatchEvent(new CustomEvent('etchfacets:cleared', { detail: { group } }));
 		}
 
 		// ---------------------------------------------------------------------
@@ -904,7 +1099,7 @@
 		// ---------------------------------------------------------------------
 
 		const debouncedSearch = debounce(() => fetchResults(1), 300);
-		const debouncedRange  = debounce(() => fetchResults(1), 500);
+		const debouncedRange = debounce(() => fetchResults(1), 500);
 
 		facetElements.forEach((el) => {
 			// Checkboxes & radios.
@@ -946,7 +1141,7 @@
 		// Per-facet range reset (e.g. a small icon next to a price/age/reading-time
 		// slider that snaps just that one facet back to its full min–max span,
 		// independent of the "Clear filters" button which resets everything).
-		document.querySelectorAll('.etchfacets-range-reset').forEach((btn) => {
+		scopedQueryAll('.etchfacets-range-reset').forEach((btn) => {
 			btn.addEventListener('click', (e) => {
 				e.preventDefault();
 
@@ -971,7 +1166,7 @@
 		 * Uses event delegation on facet containers so it works after DOM updates.
 		 */
 		function attachTreeToggleListeners() {
-			document.querySelectorAll('.etchfacets-hierarchy').forEach((facetEl) => {
+			scopedQueryAll('.etchfacets-hierarchy').forEach((facetEl) => {
 				// Use a single delegated listener per hierarchy facet.
 				if (facetEl.dataset.etchfacetsTreeInit) return;
 				facetEl.dataset.etchfacetsTreeInit = '1';
@@ -1024,10 +1219,10 @@
 		renderActiveFilters();
 
 		// ---------------------------------------------------------------------
-		// Public API
+		// Register this instance for the shared window.EtchFacets dispatcher
 		// ---------------------------------------------------------------------
 
-		window.EtchFacets = {
+		instances.set(group, {
 			refresh: () => fetchResults(1),
 			reset: () => {
 				clearAllInputs();
@@ -1035,7 +1230,6 @@
 			},
 			getSelections: () => collectSelections(),
 			getQueryContext: () => baseQuery,
-			on: (event, callback) => document.addEventListener(`etchfacets:${event}`, callback),
-		};
-	});
+		});
+	}
 })();
