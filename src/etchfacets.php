@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Plugin Name: EtchFacets
  * Description: Faceted search engine for EtchWP
- * Version: 0.3.0
+ * Version: 0.3.1
  * Author: EtchFacets
  * Requires PHP: 8.1
  * Requires at least: 5.9
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ETCHFACETS_VERSION', '0.3.0' );
+define( 'ETCHFACETS_VERSION', '0.3.1' );
 define( 'ETCHFACETS_PLUGIN_FILE', __FILE__ );
 define( 'ETCHFACETS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETCHFACETS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -252,43 +252,50 @@ function etchfacets_filter_query( WP_Query $query ): void {
 
 		// Determine this query's post type(s).
 		$query_post_type = $query->get( 'post_type' );
+		$query_types     = (array) ( $query_post_type ?: 'post' );
 
-		// Scope filtering to the listing's post type. Etch renders each card by
-		// running additional secondary queries (for related posts, meta, etc.);
-		// without this guard the facet meta_query would leak into those and blank
-		// out the card data. If the target post type is known, only filter queries
-		// for that post type.
 		if ( $target_type ) {
-			$query_types = (array) ( $query_post_type ?: 'post' );
+			// Scope filtering to the listing's declared post type. Etch renders
+			// each card by running additional secondary queries (for related
+			// posts, meta, etc.); without this guard the facet's tax/meta_query
+			// would leak into those and blank out the card data.
 			if ( ! in_array( $target_type, $query_types, true ) ) {
+				continue;
+			}
+		} else {
+			/**
+			 * Filter whether an untargeted facet group (no `_pt` in the URL —
+			 * every markup generator this plugin ships always emits it, so this
+			 * only happens with hand-authored `data-etchfacets-query` markup
+			 * that omits post_type) may still apply its filters to this query.
+			 *
+			 * Defaults to false: with no declared post type we can't tell which
+			 * of possibly several listings on the page this group belongs to,
+			 * so the safe default is to filter nothing rather than guess and
+			 * leak filters into an unrelated query/post type/card. Sites that
+			 * know they only ever have one facet-driven post type per page can
+			 * opt back into the old best-effort matching.
+			 *
+			 * @param bool     $allow  Whether to apply anyway. Default false.
+			 * @param WP_Query $query  The query under consideration.
+			 * @param array    $parsed This group's parsed facet state.
+			 */
+			$allow_untargeted = (bool) apply_filters( 'etchfacets/filter_query/apply_untargeted', false, $query, $parsed );
+
+			if ( ! $allow_untargeted ) {
+				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+					error_log( sprintf( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+						'EtchFacets: skipped applying facet filters — no post_type (`_pt`) declared for this facet group. Add post_type to data-etchfacets-query, or opt into legacy best-effort matching via the etchfacets/filter_query/apply_untargeted filter. Query post_type(s): %s.',
+						implode( ',', $query_types )
+					) );
+				}
 				continue;
 			}
 		}
 
-		// If we have taxonomy filters, check if this query's post type uses those taxonomies.
 		if ( isset( $args['tax_query'] ) ) {
-			$applies = false;
-			foreach ( $args['tax_query'] as $clause ) {
-				if ( ! is_array( $clause ) || ! isset( $clause['taxonomy'] ) ) {
-					continue;
-				}
-				$tax_object = get_taxonomy( $clause['taxonomy'] );
-				if ( $tax_object ) {
-					// Check if the query's post type is in this taxonomy's object_type.
-					$post_types = (array) ( $query_post_type ?: 'post' );
-					foreach ( $post_types as $pt ) {
-						if ( in_array( $pt, $tax_object->object_type, true ) ) {
-							$applies = true;
-							break 2;
-						}
-					}
-				}
-			}
-
-			if ( $applies ) {
-				$existing = $query->get( 'tax_query' ) ?: [];
-				$query->set( 'tax_query', array_merge( $existing, $args['tax_query'] ) );
-			}
+			$existing = $query->get( 'tax_query' ) ?: [];
+			$query->set( 'tax_query', array_merge( $existing, $args['tax_query'] ) );
 		}
 
 		if ( isset( $args['meta_query'] ) ) {

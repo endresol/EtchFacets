@@ -116,6 +116,8 @@ class EtchFacets_Facet_Renderer {
 			'label'       => '',
 			'show_counts' => 'true',
 			'class'       => '',
+			'post_type'   => '',
+			'hide_empty'  => 'true',
 		], $atts, 'etchfacets_facet' );
 
 		$name        = sanitize_key( $atts['name'] );
@@ -125,6 +127,8 @@ class EtchFacets_Facet_Renderer {
 		$label       = sanitize_text_field( $atts['label'] );
 		$show_counts = filter_var( $atts['show_counts'], FILTER_VALIDATE_BOOLEAN );
 		$extra_class = sanitize_html_class( $atts['class'] );
+		$post_type   = sanitize_key( $atts['post_type'] );
+		$hide_empty  = filter_var( $atts['hide_empty'], FILTER_VALIDATE_BOOLEAN );
 
 		if ( ! $name || ! $source ) {
 			return '';
@@ -154,16 +158,16 @@ class EtchFacets_Facet_Renderer {
 				break;
 
 			case 'dropdown':
-				$html .= $this->render_dropdown( $source, $name, $show_counts );
+				$html .= $this->render_dropdown( $source, $name, $show_counts, $post_type, $hide_empty );
 				break;
 
 			case 'radio':
-				$html .= $this->render_choices( $source, $show_counts, 'radio', $name );
+				$html .= $this->render_choices( $source, $show_counts, 'radio', $name, $post_type, $hide_empty );
 				break;
 
 			case 'checkboxes':
 			default:
-				$html .= $this->render_choices( $source, $show_counts, 'checkbox', $name );
+				$html .= $this->render_choices( $source, $show_counts, 'checkbox', $name, $post_type, $hide_empty );
 				break;
 		}
 
@@ -305,10 +309,12 @@ class EtchFacets_Facet_Renderer {
 	 * @param bool   $show_counts Whether to show counts.
 	 * @param string $input_type  The input type: 'checkbox' or 'radio'.
 	 * @param string $facet_name  The facet name (used for radio input grouping).
+	 * @param string $post_type   Optional. Scope taxonomy/meta choices to this post type.
+	 * @param bool   $hide_empty  Whether to omit zero-count taxonomy terms.
 	 * @return string The choices HTML.
 	 */
-	private function render_choices( string $source, bool $show_counts, string $input_type, string $facet_name ): string {
-		$choices = $this->get_choices( $source );
+	private function render_choices( string $source, bool $show_counts, string $input_type, string $facet_name, string $post_type = '', bool $hide_empty = true ): string {
+		$choices = $this->get_choices( $source, $post_type, $hide_empty );
 		$html    = '';
 
 		foreach ( $choices as $choice ) {
@@ -336,10 +342,12 @@ class EtchFacets_Facet_Renderer {
 	 * @param string $source      The facet source.
 	 * @param string $facet_name  The facet name.
 	 * @param bool   $show_counts Whether to show counts.
+	 * @param string $post_type   Optional. Scope taxonomy/meta choices to this post type.
+	 * @param bool   $hide_empty  Whether to omit zero-count taxonomy terms.
 	 * @return string The dropdown HTML.
 	 */
-	private function render_dropdown( string $source, string $facet_name, bool $show_counts ): string {
-		$choices = $this->get_choices( $source );
+	private function render_dropdown( string $source, string $facet_name, bool $show_counts, string $post_type = '', bool $hide_empty = true ): string {
+		$choices = $this->get_choices( $source, $post_type, $hide_empty );
 
 		$html  = '<select name="' . esc_attr( $facet_name ) . '">';
 		$html .= '<option value="">' . esc_html__( 'All', 'etchfacets' ) . '</option>';
@@ -366,10 +374,13 @@ class EtchFacets_Facet_Renderer {
 	 * Public so EtchFacets_Choices_Rest can reuse the same lookup logic for
 	 * the native-Etch-component REST endpoint instead of duplicating it.
 	 *
-	 * @param string $source The facet source (e.g., "taxonomy:category", "meta:color").
+	 * @param string $source     The facet source (e.g., "taxonomy:category", "meta:color").
+	 * @param string $post_type  Optional. Scope taxonomy/meta choices to this post type. Empty
+	 *                           string preserves the legacy global (unscoped) lookup.
+	 * @param bool   $hide_empty Whether to omit zero-count taxonomy terms. Ignored for meta sources.
 	 * @return array Array of choices, each with 'value', 'label', and 'count' keys.
 	 */
-	public function get_choices( string $source ): array {
+	public function get_choices( string $source, string $post_type = '', bool $hide_empty = true ): array {
 		$parts = explode( ':', $source, 2 );
 		if ( count( $parts ) !== 2 ) {
 			return [];
@@ -380,10 +391,10 @@ class EtchFacets_Facet_Renderer {
 
 		switch ( $source_type ) {
 			case 'taxonomy':
-				return $this->get_taxonomy_choices( sanitize_key( $source_key ) );
+				return $this->get_taxonomy_choices( sanitize_key( $source_key ), $post_type, $hide_empty );
 
 			case 'meta':
-				return $this->get_meta_choices( sanitize_key( $source_key ) );
+				return $this->get_meta_choices( sanitize_key( $source_key ), $post_type );
 
 			default:
 				return [];
@@ -393,51 +404,124 @@ class EtchFacets_Facet_Renderer {
 	/**
 	 * Get choices from a taxonomy.
 	 *
-	 * @param string $taxonomy The taxonomy name.
+	 * A taxonomy can be shared across multiple post types (e.g. `category` on
+	 * both `post` and a custom CPT). With no `$post_type`, this falls back to
+	 * a plain `get_terms()` lookup — global across every post type using the
+	 * taxonomy, matching this plugin's original behavior. With `$post_type`
+	 * set, term presence and counts are scoped to posts of that type only, via
+	 * direct SQL (get_terms() has no post-type-scoped hide_empty option).
+	 *
+	 * @param string $taxonomy   The taxonomy name.
+	 * @param string $post_type  Optional. Scope to this post type.
+	 * @param bool   $hide_empty Whether to omit terms with zero matching posts.
 	 * @return array Array of choices.
 	 */
-	private function get_taxonomy_choices( string $taxonomy ): array {
+	private function get_taxonomy_choices( string $taxonomy, string $post_type = '', bool $hide_empty = true ): array {
 		if ( ! taxonomy_exists( $taxonomy ) ) {
 			return [];
 		}
 
-		$terms = get_terms( [
-			'taxonomy'   => $taxonomy,
-			'hide_empty' => true,
-		] );
+		if ( '' === $post_type ) {
+			$terms = get_terms( [
+				'taxonomy'   => $taxonomy,
+				'hide_empty' => $hide_empty,
+			] );
 
-		if ( is_wp_error( $terms ) ) {
+			if ( is_wp_error( $terms ) ) {
+				return [];
+			}
+
+			$choices = [];
+			foreach ( $terms as $term ) {
+				$choices[] = [
+					'value' => $term->slug,
+					'label' => $term->name,
+					'count' => $term->count,
+				];
+			}
+
+			return $choices;
+		}
+
+		global $wpdb;
+
+		/**
+		 * Filter the post statuses counted toward a post-type-scoped taxonomy
+		 * facet's term counts.
+		 *
+		 * @param string[] $statuses  Post statuses to include. Default ['publish'].
+		 * @param string   $taxonomy  Taxonomy being queried.
+		 * @param string   $post_type Post type the choices are scoped to.
+		 */
+		$statuses = apply_filters( 'etchfacets/taxonomy_choices/post_status', [ 'publish' ], $taxonomy, $post_type );
+		$statuses = array_map( 'sanitize_key', (array) $statuses );
+		if ( empty( $statuses ) ) {
+			$statuses = [ 'publish' ];
+		}
+		$status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+		$having              = $hide_empty ? 'HAVING COUNT(p.ID) > 0' : '';
+
+		// The post_type/post_status constraints live in the LEFT JOIN's ON
+		// clause, not WHERE — putting them in WHERE would turn this into an
+		// INNER JOIN and drop zero-count terms even when hide_empty is false.
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$results = $wpdb->get_results( $wpdb->prepare(
+			"SELECT t.slug AS value, t.name AS label, COUNT(p.ID) AS count
+			FROM {$wpdb->terms} t
+			INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
+			LEFT JOIN {$wpdb->term_relationships} tr ON tr.term_taxonomy_id = tt.term_taxonomy_id
+			LEFT JOIN {$wpdb->posts} p ON p.ID = tr.object_id AND p.post_type = %s AND p.post_status IN ({$status_placeholders})
+			GROUP BY t.term_id
+			{$having}
+			ORDER BY t.name ASC",
+			array_merge( [ $taxonomy, $post_type ], $statuses )
+		) );
+
+		if ( empty( $results ) ) {
 			return [];
 		}
 
-		$choices = [];
-		foreach ( $terms as $term ) {
-			$choices[] = [
-				'value' => $term->slug,
-				'label' => $term->name,
-				'count' => $term->count,
+		return array_map( function ( $row ) {
+			return [
+				'value' => $row->value,
+				'label' => $row->label,
+				'count' => (int) $row->count,
 			];
-		}
-
-		return $choices;
+		}, $results );
 	}
 
 	/**
 	 * Get choices from post meta values.
 	 *
-	 * @param string $meta_key The meta key to query.
+	 * A meta key can be shared across multiple post types (e.g. `color` on
+	 * both `product` and `event`). With `$post_type` set, distinct values are
+	 * scoped to posts of that type only.
+	 *
+	 * @param string $meta_key  The meta key to query.
+	 * @param string $post_type Optional. Scope to this post type.
 	 * @return array Array of choices.
 	 */
-	private function get_meta_choices( string $meta_key ): array {
+	private function get_meta_choices( string $meta_key, string $post_type = '' ): array {
 		global $wpdb;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$results = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT meta_value, COUNT(*) AS count FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON pm.post_id = p.ID WHERE pm.meta_key = %s AND pm.meta_value != '' AND p.post_status = 'publish' GROUP BY meta_value ORDER BY meta_value ASC",
-				$meta_key
-			)
-		);
+		if ( '' === $post_type ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT meta_value, COUNT(*) AS count FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON pm.post_id = p.ID WHERE pm.meta_key = %s AND pm.meta_value != '' AND p.post_status = 'publish' GROUP BY meta_value ORDER BY meta_value ASC",
+					$meta_key
+				)
+			);
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT meta_value, COUNT(*) AS count FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON pm.post_id = p.ID WHERE pm.meta_key = %s AND pm.meta_value != '' AND p.post_status = 'publish' AND p.post_type = %s GROUP BY meta_value ORDER BY meta_value ASC",
+					$meta_key,
+					$post_type
+				)
+			);
+		}
 
 		if ( ! $results ) {
 			return [];
@@ -463,7 +547,8 @@ class EtchFacets_Facet_Renderer {
  *
  * @param string $name    The facet name.
  * @param string $source  The facet source (e.g., "taxonomy:category").
- * @param array  $options Optional. Additional options: type, logic, label, show_counts, class.
+ * @param array  $options Optional. Additional options: type, logic, label, show_counts, class,
+ *                        post_type, hide_empty.
  * @return void
  */
 function etchfacets_display( string $name, string $source, array $options = [] ): void {
@@ -477,6 +562,8 @@ function etchfacets_display( string $name, string $source, array $options = [] )
 		'label'       => '',
 		'show_counts' => 'true',
 		'class'       => '',
+		'post_type'   => '',
+		'hide_empty'  => 'true',
 	], $options );
 
 	echo $renderer->render_facet_shortcode( $atts ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- output is escaped within render_facet_shortcode.

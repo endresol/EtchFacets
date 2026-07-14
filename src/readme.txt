@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.1.5
+Stable tag: 0.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,3 +46,20 @@ URL-driven state.
 * Fix: the release zip no longer strips the bundled Parsedown library, which
   caused a fatal "Class Parsedown not found" during update checks. The release
   workflow no longer excludes the plugin-update-checker vendor directory.
+
+= 0.3.1 =
+* Fix: taxonomy/meta facet choice lists (shortcode, PHP helper, and the
+  `/wp-json/etchfacets/v1/choices` REST endpoint used by native Etch Loop
+  facet components) can now be scoped to a specific post type via a new
+  `post_type` attribute/param, so term/value lists and counts no longer leak
+  across post types that share a taxonomy or meta key.
+* Add: `hide_empty` attribute/param controls whether zero-count taxonomy
+  terms are included in a facet's choice list (default `true`, unchanged).
+* Fix: the `pre_get_posts` facet filter no longer applies filters to a query
+  when the originating listing's post type can't be determined from the URL
+  — previously it fell back to a loose "does this taxonomy apply to this
+  post type" guess for tax_query, and applied meta_query/search/author/sort
+  with no guard at all, which could leak one listing's facet filters into an
+  unrelated query for a different post type on the same page. A new
+  `etchfacets/filter_query/apply_untargeted` filter restores the old
+  best-effort behavior for sites that were relying on it.

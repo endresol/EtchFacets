@@ -130,6 +130,13 @@ class EtchFacets_Count_Calculator {
 	/**
 	 * Calculate term counts for a taxonomy among a set of posts.
 	 *
+	 * NOTE: this query has no post_type guard of its own — it relies entirely
+	 * on $post_ids already being post_type-scoped by the caller ($post_ids is
+	 * built from $base_args, which always carries post_type; see
+	 * class-ajax-handler.php::sanitize_query_context()). If a future caller
+	 * ever passes unscoped $post_ids, counts here will span every post type
+	 * sharing this taxonomy.
+	 *
 	 * @param string $taxonomy Taxonomy name.
 	 * @param array  $post_ids Post IDs to count within.
 	 * @return array Array of ['value' => slug, 'label' => name, 'count' => N].

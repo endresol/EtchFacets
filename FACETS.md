@@ -70,6 +70,8 @@ You have three options, in order of convenience:
 | `label`       | *(empty)*     | Optional `<h3>` label rendered above choices.          |
 | `show_counts` | `true`        | Render `(N)` count badges next to each choice.         |
 | `class`       | *(empty)*     | Extra CSS class on the wrapper.                        |
+| `post_type`   | *(empty)*     | For `taxonomy:`/`meta:` sources shared by more than one post type, scopes the choice list and counts to this post type. Leave empty only if the taxonomy/meta key belongs to a single post type. |
+| `hide_empty`  | `true`        | For `taxonomy:` sources, omit terms with zero matching posts (within `post_type`, if set). Set to `false` to always list every term. |
 
 ### 2. PHP helper
 
@@ -114,7 +116,18 @@ Filters posts by terms of any registered taxonomy. Values are **term slugs**.
 [etchfacets_facet name="brand"    source="taxonomy:product_brand" logic="and"]
 ```
 
-Choices are populated automatically via `get_terms()` (only non-empty terms).
+Choices are populated automatically via `get_terms()` (only non-empty terms
+by default).
+
+**Shared taxonomies.** If this taxonomy is registered on more than one post
+type (e.g. `category` used by both `post` and a custom `event` CPT), always
+set `post_type` to match the sibling `[etchfacets_listing]`'s post type —
+otherwise the term list and counts are global across every post type using
+the taxonomy, which usually isn't what you want. The same applies to the
+`/wp-json/etchfacets/v1/choices` REST endpoint that backs the native Etch
+Loop-based facet components (`?source=taxonomy:category&post_type=event`);
+pass `hide_empty=false` there to include zero-count terms. This scoping also
+applies to `meta:` sources sharing a meta key across post types.
 
 **Hierarchical (tree) variant.** Parent/child taxonomies (e.g. `category`,
 `product_cat`) can be rendered as a collapsible tree. Use the `etchfacets-*`
