@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.3.1
+Stable tag: 0.3.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,14 @@ URL-driven state.
 * Fix: the release zip no longer strips the bundled Parsedown library, which
   caused a fatal "Class Parsedown not found" during update checks. The release
   workflow no longer excludes the plugin-update-checker vendor directory.
+
+= 0.3.2 =
+* Fix: dropdown facet choices could show an inconsistent "(N)" count suffix —
+  present on some options but not others — after the live count refresh ran,
+  regardless of the facet's `show_counts` setting. The `<select>` now carries
+  a `data-etchfacets-show-counts` flag so the frontend JS only appends counts
+  to dropdown options when the facet was actually rendered with counts on,
+  matching the behavior checkbox/radio facets already had.
 
 = 0.3.1 =
 * Fix: taxonomy/meta facet choice lists (shortcode, PHP helper, and the

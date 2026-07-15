@@ -447,10 +447,16 @@
 					}
 
 					// --- Dropdown options ---
-					const option = facetEl.querySelector(
-						`select option[value="${CSS.escape(choice.value)}"]`
+					const select = facetEl.querySelector('select');
+					const option = select?.querySelector(
+						`option[value="${CSS.escape(choice.value)}"]`
 					);
-					if (option) {
+					// Only append "(N)" if the select was rendered with show_counts
+					// true — otherwise every choice with a nonzero count under the
+					// current filters would gain a suffix that choices sitting at
+					// zero (and therefore absent from this response) never get,
+					// making counts appear on some options but not others.
+					if (option && select?.dataset.etchfacetsShowCounts === '1') {
 						// Strip any existing count from the label, then append.
 						const baseText = option.textContent.replace(/\s*\(\d+\)$/, '');
 						option.textContent = `${baseText} (${choice.count})`;

@@ -349,7 +349,11 @@ class EtchFacets_Facet_Renderer {
 	private function render_dropdown( string $source, string $facet_name, bool $show_counts, string $post_type = '', bool $hide_empty = true ): string {
 		$choices = $this->get_choices( $source, $post_type, $hide_empty );
 
-		$html  = '<select name="' . esc_attr( $facet_name ) . '">';
+		// data-etchfacets-show-counts tells the JS whether it's allowed to append
+		// "(N)" to option text after an AJAX count refresh — without it, JS has
+		// no way to know show_counts was false at render time (unlike checkbox/
+		// radio, where the absence of a .etchfacet-count span already signals it).
+		$html  = '<select name="' . esc_attr( $facet_name ) . '" data-etchfacets-show-counts="' . ( $show_counts ? '1' : '0' ) . '">';
 		$html .= '<option value="">' . esc_html__( 'All', 'etchfacets' ) . '</option>';
 
 		foreach ( $choices as $choice ) {
