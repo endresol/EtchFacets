@@ -137,6 +137,17 @@ class EtchFacets_Count_Calculator {
 	 * ever passes unscoped $post_ids, counts here will span every post type
 	 * sharing this taxonomy.
 	 *
+	 * Uses a LEFT JOIN from every term in the taxonomy, rather than an INNER
+	 * JOIN starting from $post_ids's term relationships — a term with zero
+	 * matches among $post_ids (e.g. one only ever used by posts of a
+	 * different post type, for a taxonomy shared across post types) must
+	 * still come back with count 0 instead of being omitted from the result
+	 * entirely. Omitting it meant the frontend could never learn a choice had
+	 * dropped to zero: updateCounts() in etchfacets.js only touches choices
+	 * present in this response, so an absent one kept whatever count/format
+	 * it had at initial render, and the etchfacet-ghost/etchfacet-hidden
+	 * zero-count styling could never engage for it either.
+	 *
 	 * @param string $taxonomy Taxonomy name.
 	 * @param array  $post_ids Post IDs to count within.
 	 * @return array Array of ['value' => slug, 'label' => name, 'count' => N].
@@ -150,14 +161,15 @@ class EtchFacets_Count_Calculator {
 
 		$id_placeholders = implode( ',', array_fill( 0, count( $post_ids ), '%d' ) );
 
+		// The object_id-IN constraint lives in the LEFT JOIN's ON clause, not
+		// WHERE — putting it in WHERE would turn this back into an INNER JOIN
+		// and drop zero-count terms.
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$results = $wpdb->get_results( $wpdb->prepare(
-			"SELECT t.slug AS value, t.name AS label, COUNT(*) AS count
-			FROM {$wpdb->term_relationships} tr
-			INNER JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
-			INNER JOIN {$wpdb->terms} t ON tt.term_id = t.term_id
-			WHERE tt.taxonomy = %s
-			AND tr.object_id IN ({$id_placeholders})
+			"SELECT t.slug AS value, t.name AS label, COUNT(tr.object_id) AS count
+			FROM {$wpdb->terms} t
+			INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
+			LEFT JOIN {$wpdb->term_relationships} tr ON tr.term_taxonomy_id = tt.term_taxonomy_id AND tr.object_id IN ({$id_placeholders})
 			GROUP BY t.term_id
 			ORDER BY count DESC",
 			array_merge( [ $taxonomy ], $post_ids )

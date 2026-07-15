@@ -426,7 +426,19 @@
 					if (input) {
 						const countSpan = input.closest('label')?.querySelector('.etchfacet-count');
 						if (countSpan) {
-							countSpan.textContent = `(${choice.count})`;
+							// Replace only the digits, preserving whatever static
+							// decoration the author's own template put around them
+							// (parens, brackets, nothing at all — this plugin
+							// doesn't dictate the format). Assuming a fixed "(N)"
+							// shape here would fight hand-authored Etch markup
+							// that renders a bare number, leaving some choices
+							// parenthesized and others not depending only on
+							// which choices this particular AJAX response happened
+							// to touch.
+							const existing = countSpan.textContent;
+							countSpan.textContent = /\d/.test(existing)
+								? existing.replace(/\d+/, String(choice.count))
+								: String(choice.count);
 						}
 
 						const label = input.closest('label');

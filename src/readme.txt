@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.3.2
+Stable tag: 0.3.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,24 @@ URL-driven state.
 * Fix: the release zip no longer strips the bundled Parsedown library, which
   caused a fatal "Class Parsedown not found" during update checks. The release
   workflow no longer excludes the plugin-update-checker vendor directory.
+
+= 0.3.3 =
+* Fix: checkbox/radio facet counts on a shared taxonomy (a taxonomy used by
+  more than one post type) could show a `(N)` count on choices used by the
+  current post type but a bare number on choices only used by another post
+  type. The live count refresh's `updateCounts()` was hardcoding a "(N)"
+  format onto any `.etchfacet-count` element it touched, clashing with hand-
+  authored Etch templates that render counts without parentheses. It now
+  only swaps the digits, leaving whatever formatting the template already
+  has around them.
+* Fix: `EtchFacets_Count_Calculator::calculate_taxonomy_counts()` used an
+  INNER JOIN, so a term with zero matching posts under the current post type
+  (e.g. one only used by another post type sharing the taxonomy) was omitted
+  from the count response entirely rather than reported as 0 — meaning its
+  displayed count could go stale indefinitely, and the `etchfacet-ghost` /
+  `etchfacet-hidden` zero-count styling could never engage for it. Switched
+  to a LEFT JOIN so every term in the taxonomy is represented, with 0 where
+  there's no match.
 
 = 0.3.2 =
 * Fix: dropdown facet choices could show an inconsistent "(N)" count suffix —
