@@ -207,6 +207,7 @@
 		const facetElements = scopedQueryAll('[data-etchfacet]');
 		const resetButtons = scopedQueryAll('.etchfacets-reset');
 		const totalElements = scopedQueryAll('[data-etchfacets-total]');
+		const grandTotalElements = scopedQueryAll('[data-etchfacets-grand-total]');
 		const activeFiltersContainer = scopedQueryOne('[data-etchfacets-active-filters]');
 
 		// Facets (keyed by their [data-etchfacet] container) whose range/slider/
@@ -925,6 +926,15 @@
 
 						totalElements.forEach((el) => {
 							el.textContent = response.data.total;
+						});
+
+						// Unlike totalElements, this never changes with facet
+						// selections — it's the listing's post type (plus any
+						// base query) with no facets applied at all, so it's
+						// safe (and simplest) to just set it on every response
+						// the same as totalElements, rather than only once.
+						grandTotalElements.forEach((el) => {
+							el.textContent = response.data.grand_total;
 						});
 
 						maxPages = response.data.max_pages || 1;

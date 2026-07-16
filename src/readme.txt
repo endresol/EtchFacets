@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.3.7
+Stable tag: 0.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,14 @@ URL-driven state.
 * Fix: the release zip no longer strips the bundled Parsedown library, which
   caused a fatal "Class Parsedown not found" during update checks. The release
   workflow no longer excludes the plugin-update-checker vendor directory.
+
+= 0.4.0 =
+* Add: `[etchfacets_total_count]` shortcode and a `grand_total` field in the
+  AJAX response, giving the total post count for a listing's post type (plus
+  any base tax/meta query baked into the listing) with NO facets applied —
+  a fixed reference number, unlike `[etchfacets_results_count]`'s live
+  filtered total, for a "12 of 1,234" pattern. Populate any element with
+  `data-etchfacets-grand-total` to use it from hand-authored Etch markup.
 
 = 0.3.7 =
 * Add: `EtchFacets_Count_Calculator::calculate_taxonomy_counts()` now

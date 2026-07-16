@@ -97,15 +97,27 @@ class EtchFacets_Ajax_Handler {
 		// 7. Calculate counts.
 		$counts = $this->count_calculator->calculate_all( $facets, $sources, $logic, $base_args_without_paged );
 
+		// 7b. Grand total — this listing's post type (plus any base tax/meta
+		// query baked into the listing itself) with NO facet selections
+		// applied, i.e. "how many posts exist here at all". Unlike 'total'
+		// below, this never changes as facets are toggled — it's a fixed
+		// reference number ("N of 1,234 shown"), not a filtered result count.
+		$grand_total_query = new WP_Query( array_merge( $base_args_without_paged, [
+			'fields'         => 'ids',
+			'posts_per_page' => 1,
+		] ) );
+		$grand_total       = $grand_total_query->found_posts;
+
 		// 8. Build and send response.
 		$response = [
-			'html'       => $html,
-			'counts'     => $counts,
-			'total'      => $query->found_posts,
-			'max_pages'  => $query->max_num_pages,
-			'page'       => $page,
-			'group'      => $group,
-			'query_args' => WP_DEBUG ? $args : null,
+			'html'        => $html,
+			'counts'      => $counts,
+			'total'       => $query->found_posts,
+			'grand_total' => $grand_total,
+			'max_pages'   => $query->max_num_pages,
+			'page'        => $page,
+			'group'       => $group,
+			'query_args'  => WP_DEBUG ? $args : null,
 		];
 
 		/**

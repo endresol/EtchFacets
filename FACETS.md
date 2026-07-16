@@ -432,13 +432,15 @@ Things you'll usually drop on the page along with facets:
 [etchfacets_listing post_type="product" posts_per_page="12"]
 [etchfacets_reset text="Clear filters"]
 [etchfacets_results_count]
+[etchfacets_total_count]
 ```
 
 | Shortcode                  | Output                                                                       |
 |----------------------------|------------------------------------------------------------------------------|
 | `[etchfacets_listing]`     | The `.etchfacets-template` container (initial server-rendered loop inside).  |
 | `[etchfacets_reset]`       | `<button class="etchfacets-reset">` — clears all inputs and refetches.       |
-| `[etchfacets_results_count]` | `<span data-etchfacets-total>` — live total post count.                    |
+| `[etchfacets_results_count]` | `<span data-etchfacets-total>` — how many posts match the CURRENTLY active facets. Changes as you filter. |
+| `[etchfacets_total_count]` | `<span data-etchfacets-grand-total>` — how many posts exist in this listing's post type with NO facets applied. Fixed; doesn't change as you filter. Use both together for a "12 of 1,234" pattern. For hand-authored Etch markup (no shortcode), just add `data-etchfacets-grand-total` to any element inside the facet instance. |
 
 `[etchfacets_listing]` accepts `post_type`, `posts_per_page`, `orderby`,
 `order`, `id`, `class`. Or build your own container with the equivalent

@@ -22,6 +22,7 @@ class EtchFacets_Facet_Renderer {
 		add_shortcode( 'etchfacets_map', [ $this, 'render_map_shortcode' ] );
 		add_shortcode( 'etchfacets_reset', [ $this, 'render_reset_shortcode' ] );
 		add_shortcode( 'etchfacets_results_count', [ $this, 'render_results_count_shortcode' ] );
+		add_shortcode( 'etchfacets_total_count', [ $this, 'render_total_count_shortcode' ] );
 	}
 
 	/**
@@ -261,6 +262,22 @@ class EtchFacets_Facet_Renderer {
 	 */
 	public function render_results_count_shortcode( $atts ): string {
 		return '<span class="etchfacets-results-count" data-etchfacets-total></span>';
+	}
+
+	/**
+	 * Render the [etchfacets_total_count] shortcode.
+	 *
+	 * Unlike [etchfacets_results_count] (which reflects the currently
+	 * filtered result count and changes as facets are toggled), this is a
+	 * fixed reference number: how many posts exist in the listing's post
+	 * type (plus any base tax/meta query baked into the listing itself)
+	 * with no facet selections applied — e.g. for a "12 of 1,234" pattern.
+	 *
+	 * @param array|string $atts Shortcode attributes.
+	 * @return string The rendered HTML.
+	 */
+	public function render_total_count_shortcode( $atts ): string {
+		return '<span class="etchfacets-total-count" data-etchfacets-grand-total></span>';
 	}
 
 	/**
