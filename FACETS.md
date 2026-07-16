@@ -71,7 +71,8 @@ You have three options, in order of convenience:
 | `show_counts` | `true`        | Render `(N)` count badges next to each choice.         |
 | `class`       | *(empty)*     | Extra CSS class on the wrapper.                        |
 | `post_type`   | *(empty)*     | For `taxonomy:`/`meta:` sources shared by more than one post type, scopes the choice list and counts to this post type. Leave empty only if the taxonomy/meta key belongs to a single post type. |
-| `hide_empty`  | `true`        | For `taxonomy:` sources, omit terms with zero matching posts (within `post_type`, if set). Set to `false` to always list every term. |
+| `hide_empty`  | `true`        | For `taxonomy:` sources, omit terms with zero matching posts (within `post_type`, if set) from the *initial* choice list. Set to `false` to always list every term from the start. |
+| `hide_empty_on_filter` | `false` | Whether a choice already in the list should be removed (vs. just dimmed via `.etchfacet-ghost`) once it drops to 0 matches because of a *different*, currently-active facet. Default keeps the choice list stable while other facets change. |
 
 ### 2. PHP helper
 
@@ -406,9 +407,20 @@ which inputs are present inside `[data-etchfacet]` and uses them.
 ### Counts and ghost / hidden states
 
 Add `<span class="etchfacet-count"></span>` inside each `<label>` and the JS
-will keep it in sync. When a choice would yield 0 results and is not selected,
-JS applies `.etchfacet-ghost` (dimmed, non-interactive) and `.etchfacet-hidden`
-(hidden) so you can style empties however you like.
+will keep it in sync. When a choice would yield 0 results under the
+currently-active OTHER facets and is not itself selected, JS always applies
+`.etchfacet-ghost` (dimmed, non-interactive) so you can style it as
+unavailable — style this class however you like.
+
+`.etchfacet-hidden` (`display: none`) is **opt-in only**, via
+`data-etchfacet-hide-empty="true"` on the facet's wrapper element (the
+`[etchfacets_facet]` shortcode exposes this as `hide_empty_on_filter="true"`).
+It defaults to off: a facet's choice list stays the same set of choices the
+whole time, regardless of what other facets are selected — only ghosting a
+choice, never removing it, so the list doesn't reflow or lose items out from
+under the user just because they toggled something in a different facet.
+Turn hiding on only if you specifically want choices to disappear once other
+active facets rule them out.
 
 ---
 

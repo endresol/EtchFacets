@@ -118,17 +118,19 @@ class EtchFacets_Facet_Renderer {
 			'class'       => '',
 			'post_type'   => '',
 			'hide_empty'  => 'true',
+			'hide_empty_on_filter' => 'false',
 		], $atts, 'etchfacets_facet' );
 
-		$name        = sanitize_key( $atts['name'] );
-		$source      = sanitize_text_field( $atts['source'] );
-		$logic       = sanitize_key( $atts['logic'] );
-		$type        = sanitize_key( $atts['type'] );
-		$label       = sanitize_text_field( $atts['label'] );
-		$show_counts = filter_var( $atts['show_counts'], FILTER_VALIDATE_BOOLEAN );
-		$extra_class = sanitize_html_class( $atts['class'] );
-		$post_type   = sanitize_key( $atts['post_type'] );
-		$hide_empty  = filter_var( $atts['hide_empty'], FILTER_VALIDATE_BOOLEAN );
+		$name                = sanitize_key( $atts['name'] );
+		$source              = sanitize_text_field( $atts['source'] );
+		$logic               = sanitize_key( $atts['logic'] );
+		$type                = sanitize_key( $atts['type'] );
+		$label               = sanitize_text_field( $atts['label'] );
+		$show_counts         = filter_var( $atts['show_counts'], FILTER_VALIDATE_BOOLEAN );
+		$extra_class         = sanitize_html_class( $atts['class'] );
+		$post_type           = sanitize_key( $atts['post_type'] );
+		$hide_empty          = filter_var( $atts['hide_empty'], FILTER_VALIDATE_BOOLEAN );
+		$hide_empty_on_filter = filter_var( $atts['hide_empty_on_filter'], FILTER_VALIDATE_BOOLEAN );
 
 		if ( ! $name || ! $source ) {
 			return '';
@@ -139,10 +141,18 @@ class EtchFacets_Facet_Renderer {
 			$classes .= ' ' . $extra_class;
 		}
 
+		// hide_empty (above) controls whether a zero-count choice appears in
+		// the list AT ALL on initial render. hide_empty_on_filter is a
+		// separate, later-stage concern: once the choice IS in the list,
+		// should it be removed again if it drops to 0 after the user narrows
+		// results with a DIFFERENT facet? Defaults to false — the choice list
+		// stays stable while other facets change; a zero-count choice is only
+		// dimmed (.etchfacet-ghost), not pulled out from under the user.
 		$html  = '<div class="' . esc_attr( $classes ) . '"';
 		$html .= ' data-etchfacet="' . esc_attr( $name ) . '"';
 		$html .= ' data-etchfacet-source="' . esc_attr( $source ) . '"';
-		$html .= ' data-etchfacet-logic="' . esc_attr( $logic ) . '">';
+		$html .= ' data-etchfacet-logic="' . esc_attr( $logic ) . '"';
+		$html .= ' data-etchfacet-hide-empty="' . ( $hide_empty_on_filter ? 'true' : 'false' ) . '">';
 
 		if ( $label ) {
 			$html .= '<h3 class="etchfacets-facet-label">' . esc_html( $label ) . '</h3>';
@@ -562,7 +572,7 @@ class EtchFacets_Facet_Renderer {
  * @param string $name    The facet name.
  * @param string $source  The facet source (e.g., "taxonomy:category").
  * @param array  $options Optional. Additional options: type, logic, label, show_counts, class,
- *                        post_type, hide_empty.
+ *                        post_type, hide_empty, hide_empty_on_filter.
  * @return void
  */
 function etchfacets_display( string $name, string $source, array $options = [] ): void {
@@ -578,6 +588,7 @@ function etchfacets_display( string $name, string $source, array $options = [] )
 		'class'       => '',
 		'post_type'   => '',
 		'hide_empty'  => 'true',
+		'hide_empty_on_filter' => 'false',
 	], $options );
 
 	echo $renderer->render_facet_shortcode( $atts ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- output is escaped within render_facet_shortcode.

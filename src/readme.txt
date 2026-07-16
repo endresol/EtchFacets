@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.3.5
+Stable tag: 0.3.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,17 @@ URL-driven state.
 * Fix: the release zip no longer strips the bundled Parsedown library, which
   caused a fatal "Class Parsedown not found" during update checks. The release
   workflow no longer excludes the plugin-update-checker vendor directory.
+
+= 0.3.6 =
+* Fix: a zero-count facet choice was being fully removed from view
+  (`.etchfacet-hidden`, `display: none`) the moment its count dropped to 0
+  — including when that happened only because a DIFFERENT, unrelated facet
+  was selected. This made choice lists reflow and lose items out from under
+  the user for simply toggling something else on the page. Hiding is now
+  opt-in via `data-etchfacet-hide-empty="true"` on the facet wrapper (or
+  the `[etchfacets_facet]` shortcode's new `hide_empty_on_filter="true"`
+  attribute) and defaults to off — a zero-count choice is only dimmed via
+  `.etchfacet-ghost`, never removed, unless explicitly opted in.
 
 = 0.3.5 =
 * Fix: any facet whose name (the `data-etchfacet` value, e.g. `Status`)

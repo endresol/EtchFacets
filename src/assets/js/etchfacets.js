@@ -449,7 +449,19 @@
 								label.classList.remove('etchfacet-ghost');
 							}
 
-							if (choice.count === 0 && !input.checked) {
+							// Actually removing a zero-count choice from view is
+							// opt-in (data-etchfacet-hide-empty="true" on the
+							// facet wrapper) and off by default — the choice list
+							// is otherwise expected to stay stable while other
+							// facets are toggled. A choice hitting 0 under the
+							// current combination of OTHER active facets doesn't
+							// mean it's gone forever; hiding it there makes the
+							// list reflow and choices vanish out from under the
+							// user just for selecting something unrelated.
+							// etchfacet-ghost (dimmed, disabled) still applies
+							// unconditionally above to signal "not selectable
+							// right now" without removing it from the list.
+							if (facetEl.dataset.etchfacetHideEmpty === 'true' && choice.count === 0 && !input.checked) {
 								label.classList.add('etchfacet-hidden');
 							} else {
 								label.classList.remove('etchfacet-hidden');
