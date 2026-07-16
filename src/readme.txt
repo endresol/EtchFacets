@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.3.3
+Stable tag: 0.3.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,16 @@ URL-driven state.
 * Fix: the release zip no longer strips the bundled Parsedown library, which
   caused a fatal "Class Parsedown not found" during update checks. The release
   workflow no longer excludes the plugin-update-checker vendor directory.
+
+= 0.3.4 =
+* Fix: a taxonomy or meta key with any uppercase letter in its registered
+  name could show an empty choice list (shortcode, PHP helper, and the
+  `/wp-json/etchfacets/v1/choices` REST endpoint), even though live
+  filtering and counts worked fine for the same facet. `get_choices()` was
+  force-lowercasing the source name via `sanitize_key()` before checking
+  `taxonomy_exists()` — a case-sensitive lookup — while the query-builder
+  path used for filtering/counts preserved case. Both now preserve case via
+  `sanitize_text_field()`, matching each other.
 
 = 0.3.3 =
 * Fix: checkbox/radio facet counts on a shared taxonomy (a taxonomy used by

@@ -393,12 +393,22 @@ class EtchFacets_Facet_Renderer {
 		$source_type = $parts[0];
 		$source_key  = $parts[1];
 
+		// sanitize_text_field(), not sanitize_key() — taxonomy/meta names aren't
+		// guaranteed lowercase (WP doesn't enforce that on register_taxonomy()),
+		// and every downstream query binds this as a prepared parameter rather
+		// than interpolating it, so there's no injection reason to fold case.
+		// Query_Builder::parse_source() already sanitizes this same value with
+		// sanitize_text_field() for the live filter/count path; lowercasing it
+		// only here made taxonomy_exists() (a case-sensitive array lookup)
+		// silently fail for any taxonomy registered with an uppercase letter,
+		// while the filter/count path kept working — same source string,
+		// different result depending which of the two code paths ran it.
 		switch ( $source_type ) {
 			case 'taxonomy':
-				return $this->get_taxonomy_choices( sanitize_key( $source_key ), $post_type, $hide_empty );
+				return $this->get_taxonomy_choices( sanitize_text_field( $source_key ), $post_type, $hide_empty );
 
 			case 'meta':
-				return $this->get_meta_choices( sanitize_key( $source_key ), $post_type );
+				return $this->get_meta_choices( sanitize_text_field( $source_key ), $post_type );
 
 			default:
 				return [];
