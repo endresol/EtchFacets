@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.3.6
+Stable tag: 0.3.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,19 @@ URL-driven state.
 * Fix: the release zip no longer strips the bundled Parsedown library, which
   caused a fatal "Class Parsedown not found" during update checks. The release
   workflow no longer excludes the plugin-update-checker vendor directory.
+
+= 0.3.7 =
+* Add: `EtchFacets_Count_Calculator::calculate_taxonomy_counts()` now
+  requires `taxonomy_exists()` before counting, matching the existing guard
+  in the choices endpoint. Previously a facet whose source named a taxonomy
+  that isn't currently registered (e.g. a case mismatch or typo against the
+  real slug) could still show a real-looking nonzero count — its raw SQL
+  matched `wp_term_taxonomy.taxonomy` directly, and MySQL's default
+  collation is case-insensitive — even though selecting that choice would
+  always return zero posts, since `WP_Query`'s `tax_query` uses the same
+  case-sensitive `taxonomy_exists()` check and silently rejects it. Counts
+  for such a facet now stay empty instead of looking correct right up until
+  you click it; with `WP_DEBUG` on, a message is logged naming the taxonomy.
 
 = 0.3.6 =
 * Fix: a zero-count facet choice was being fully removed from view

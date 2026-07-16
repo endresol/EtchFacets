@@ -157,6 +157,28 @@ class EtchFacets_Count_Calculator {
 			return [];
 		}
 
+		// This query matches directly against wp_term_taxonomy.taxonomy by
+		// raw string, with no awareness of whether $taxonomy is a currently
+		// registered WP taxonomy. Left unguarded, a facet source with a wrong
+		// or mis-cased taxonomy name (get_taxonomy_choices() requires an exact,
+		// case-sensitive taxonomy_exists() match — MySQL's default collation
+		// doesn't) can still find real term_relationships rows and report a
+		// plausible-looking nonzero count here, even though the same name will
+		// never work as an actual tax_query — WP_Query's tax_query also
+		// requires taxonomy_exists() and simply returns zero posts for a name
+		// it doesn't recognize. That combination — a real-looking count that
+		// then filters to nothing — is exactly what's confusing to debug from
+		// the frontend, so refuse to compute a count for it at all.
+		if ( ! taxonomy_exists( $taxonomy ) ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				error_log( sprintf( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+					'EtchFacets: skipped counting taxonomy "%s" — not a registered taxonomy (check for a case mismatch or typo in this facet\'s source attribute against the real registered slug).',
+					$taxonomy
+				) );
+			}
+			return [];
+		}
+
 		global $wpdb;
 
 		$id_placeholders = implode( ',', array_fill( 0, count( $post_ids ), '%d' ) );
