@@ -353,8 +353,17 @@ class EtchFacets_Ajax_Handler {
 	/**
 	 * Sanitize the facets array from POST data.
 	 *
-	 * Each key is sanitized with sanitize_key(), each value array
-	 * is sanitized with sanitize_text_field().
+	 * Each key is the facet name — sanitized with sanitize_text_field(), NOT
+	 * sanitize_key(). The facet name is only ever compared for an exact string
+	 * match: JS reads it verbatim from data-etchfacet and echoes it back as an
+	 * object key on every request, and updateCounts() in etchfacets.js looks
+	 * the element back up via a case-sensitive `[data-etchfacet="name"]`
+	 * selector. sanitize_key() lowercases, so a facet named e.g. "Status"
+	 * would round-trip as "status" and silently fail that DOM lookup —
+	 * skipping the whole facet's live count refresh (and the zero-count
+	 * ghost/hidden styling that depends on it) for any facet name containing
+	 * an uppercase letter, while an already-lowercase facet name was
+	 * unaffected. Each value array is sanitized with sanitize_text_field().
 	 *
 	 * @param mixed $raw Raw facets data.
 	 * @return array Sanitized facets.
@@ -366,7 +375,7 @@ class EtchFacets_Ajax_Handler {
 
 		$sanitized = [];
 		foreach ( $raw as $key => $values ) {
-			$safe_key = sanitize_key( $key );
+			$safe_key = sanitize_text_field( (string) $key );
 			if ( is_array( $values ) ) {
 				$sanitized[ $safe_key ] = array_map( 'sanitize_text_field', $values );
 			} else {
@@ -380,6 +389,9 @@ class EtchFacets_Ajax_Handler {
 	/**
 	 * Sanitize the sources array from POST data.
 	 *
+	 * Key (facet name) uses sanitize_text_field() to preserve case — see the
+	 * comment on sanitize_facets() above for why.
+	 *
 	 * @param mixed $raw Raw sources data.
 	 * @return array Sanitized sources.
 	 */
@@ -390,7 +402,7 @@ class EtchFacets_Ajax_Handler {
 
 		$sanitized = [];
 		foreach ( $raw as $key => $value ) {
-			$sanitized[ sanitize_key( $key ) ] = sanitize_text_field( $value );
+			$sanitized[ sanitize_text_field( (string) $key ) ] = sanitize_text_field( $value );
 		}
 
 		return $sanitized;
@@ -398,6 +410,11 @@ class EtchFacets_Ajax_Handler {
 
 	/**
 	 * Sanitize the logic array from POST data.
+	 *
+	 * Key (facet name) uses sanitize_text_field() to preserve case — see the
+	 * comment on sanitize_facets() above for why. The value ("or"/"and") is
+	 * still lowercased with sanitize_key(): it's an enum compared
+	 * case-insensitively at the point of use, not looked up against the DOM.
 	 *
 	 * @param mixed $raw Raw logic data.
 	 * @return array Sanitized logic.
@@ -409,7 +426,7 @@ class EtchFacets_Ajax_Handler {
 
 		$sanitized = [];
 		foreach ( $raw as $key => $value ) {
-			$sanitized[ sanitize_key( $key ) ] = sanitize_key( $value );
+			$sanitized[ sanitize_text_field( (string) $key ) ] = sanitize_key( $value );
 		}
 
 		return $sanitized;

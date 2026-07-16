@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.3.4
+Stable tag: 0.3.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,17 @@ URL-driven state.
 * Fix: the release zip no longer strips the bundled Parsedown library, which
   caused a fatal "Class Parsedown not found" during update checks. The release
   workflow no longer excludes the plugin-update-checker vendor directory.
+
+= 0.3.5 =
+* Fix: any facet whose name (the `data-etchfacet` value, e.g. `Status`)
+  contains an uppercase letter never received live count updates or
+  zero-count ghost/hidden styling. `EtchFacets_Ajax_Handler`'s
+  `sanitize_facets()`/`sanitize_sources()`/`sanitize_logic()` were
+  lowercasing the facet name via `sanitize_key()` before echoing it back as
+  a response key, but `updateCounts()` in etchfacets.js looks the facet
+  element back up with a case-sensitive `[data-etchfacet="name"]` selector —
+  the lookup silently failed and the whole facet was skipped. Facet name
+  keys now use `sanitize_text_field()` to preserve case, matching the DOM.
 
 = 0.3.4 =
 * Fix: a taxonomy or meta key with any uppercase letter in its registered
