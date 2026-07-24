@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Plugin Name: EtchFacets
  * Description: Faceted search engine for EtchWP
- * Version: 0.4.0
+ * Version: 0.4.1
  * Author: Normadic Studio
  * Requires PHP: 8.1
  * Requires at least: 5.9
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ETCHFACETS_VERSION', '0.4.0' );
+define( 'ETCHFACETS_VERSION', '0.4.1' );
 define( 'ETCHFACETS_PLUGIN_FILE', __FILE__ );
 define( 'ETCHFACETS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETCHFACETS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -91,7 +91,7 @@ function etchfacets_parse_param_key( string $key ): ?array {
  * Parse facet params from the current URL, bucketed per facet/listing
  * instance (group). Cached statically so we only parse once per request.
  *
- * @return array<string, array{facets: array, sources: array, logic: array, args: array, post_type: string, page: int}>|null
+ * @return array<string, array{facets: array, sources: array, logic: array, args: array, post_type: string, page: int, posts_per_page: int}>|null
  *         Keyed by group id, or null if the URL carries no recognized state.
  */
 function etchfacets_parse_url_params(): ?array {
@@ -124,11 +124,12 @@ function etchfacets_parse_url_params(): ?array {
 
 		if ( ! isset( $buckets[ $group ] ) ) {
 			$buckets[ $group ] = [
-				'raw_facets' => [],
-				'src'        => [],
-				'logic'      => [],
-				'pt'         => '',
-				'page'       => 1,
+				'raw_facets'     => [],
+				'src'            => [],
+				'logic'          => [],
+				'pt'             => '',
+				'page'           => 1,
+				'posts_per_page' => 0,
 			];
 		}
 
@@ -156,6 +157,11 @@ function etchfacets_parse_url_params(): ?array {
 		if ( 'page' === $base ) {
 			$page                      = absint( $value );
 			$buckets[ $group ]['page'] = $page < 1 ? 1 : $page;
+			continue;
+		}
+
+		if ( 'pp' === $base ) {
+			$buckets[ $group ]['posts_per_page'] = absint( $value );
 			continue;
 		}
 
@@ -189,20 +195,22 @@ function etchfacets_parse_url_params(): ?array {
 			$logic[ $facet_name ]   = $bucket['logic'][ $facet_name ] ?? 'or';
 		}
 
-		// Nothing to filter and no pagination for this instance — skip it.
-		if ( empty( $facets ) && $bucket['page'] <= 1 ) {
+		// Nothing to filter and no pagination/page-size override for this
+		// instance — skip it.
+		if ( empty( $facets ) && $bucket['page'] <= 1 && empty( $bucket['posts_per_page'] ) ) {
 			continue;
 		}
 
 		$args = $query_builder->build_query_args( $facets, $sources, $logic, [] );
 
 		$groups[ $group ] = [
-			'facets'    => $facets,
-			'sources'   => $sources,
-			'logic'     => $logic,
-			'args'      => $args,
-			'post_type' => $bucket['pt'],
-			'page'      => $bucket['page'],
+			'facets'         => $facets,
+			'sources'        => $sources,
+			'logic'          => $logic,
+			'args'           => $args,
+			'post_type'      => $bucket['pt'],
+			'page'           => $bucket['page'],
+			'posts_per_page' => $bucket['posts_per_page'],
 		];
 	}
 
@@ -334,6 +342,16 @@ function etchfacets_filter_query( WP_Query $query ): void {
 
 		if ( ! empty( $parsed['page'] ) && $parsed['page'] > 1 ) {
 			$query->set( 'paged', $parsed['page'] );
+		}
+
+		// Match the posts-per-page the listing actually renders (sent by the
+		// JS from its `data-etchfacets-posts-per-page` config). Without this,
+		// this query falls back to WordPress's own default posts_per_page,
+		// which can diverge from what the listing/AJAX count endpoint used to
+		// compute "page X of Y" — a page number valid by that count can then
+		// exceed this query's real max_num_pages and 404.
+		if ( ! empty( $parsed['posts_per_page'] ) ) {
+			$query->set( 'posts_per_page', $parsed['posts_per_page'] );
 		}
 	}
 }

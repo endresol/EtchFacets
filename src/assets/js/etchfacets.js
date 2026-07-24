@@ -699,6 +699,18 @@
 				params.set(gp('pt'), baseQuery.post_type);
 			}
 
+			// Tell PHP how many posts per page this listing displays. Without
+			// this, the paged GET fetch falls back to WordPress's own default
+			// posts_per_page (Reading settings), which can silently diverge
+			// from what this listing actually renders — e.g. a listing showing
+			// 3 cards per page reports "page 1 of 2" (from the AJAX count
+			// endpoint, which does use posts_per_page), but the real archive
+			// query with the default 10-per-page has only 1 page, so page 2
+			// 404s the moment the JS fetches it.
+			if (baseQuery && baseQuery.posts_per_page) {
+				params.set(gp('pp'), baseQuery.posts_per_page);
+			}
+
 			if (page > 1) {
 				params.set(gp('page'), page);
 			}

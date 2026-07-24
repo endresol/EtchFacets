@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.4.0
+Stable tag: 0.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,6 +23,20 @@ URL-driven state.
 2. Activate it from the Plugins screen.
 
 == Changelog ==
+
+= 0.4.1 =
+* Fix: paginating past page 1 on a listing whose `data-etchfacets-posts-per-page`
+  differs from WordPress's own default `posts_per_page` (Settings → Reading,
+  or the post type's registered default) could 404. The AJAX count endpoint
+  computes "page X of Y" using the listing's configured posts-per-page, but
+  the `pre_get_posts` hook driving the actual paged GET fetch only ever set
+  `paged` — never `posts_per_page` — so it fell back to WordPress's default.
+  When that default was large enough to fit every post on one page, the real
+  query's `max_num_pages` came out lower than what the pagination UI showed,
+  and requesting the "next" page asked for one that query legitimately
+  determined doesn't exist. The JS now also sends the listing's
+  posts-per-page in the paged fetch URL, and `etchfacets_filter_query()`
+  applies it to the query alongside `paged`.
 
 = 0.1.0 =
 * Initial release.
