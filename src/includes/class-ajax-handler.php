@@ -97,24 +97,39 @@ class EtchFacets_Ajax_Handler {
 		// 7. Calculate counts.
 		$counts = $this->count_calculator->calculate_all( $facets, $sources, $logic, $base_args_without_paged );
 
+		// 7a. Accurate total/max_pages. $query->found_posts and
+		// $query->max_num_pages can be inflated by a MySQL/WP_Query quirk:
+		// whenever the query's tax_query uses operator IN across multiple
+		// terms, or a meta_query clause uses compare IN across multiple
+		// postmeta rows, a post matching more than one of those values gets
+		// joined in more than once. WP_Query's GROUP BY correctly collapses
+		// that back down for the *returned* posts (so $html above is fine),
+		// but SQL_CALC_FOUND_ROWS counts rows before that collapse, so
+		// found_posts over-reports by however many "extra" matches such
+		// posts have — inflating max_num_pages and producing a phantom,
+		// empty last page. Recomputing from actual matching IDs (like
+		// EtchFacets_Count_Calculator already does for per-choice counts)
+		// sidesteps this entirely.
+		$total          = $this->count_matching_posts( $args );
+		$posts_per_page = (int) ( $args['posts_per_page'] ?? $base_args_without_paged['posts_per_page'] ?? 12 );
+		$max_pages      = $posts_per_page > 0 ? (int) ceil( $total / $posts_per_page ) : ( $total > 0 ? 1 : 0 );
+
 		// 7b. Grand total — this listing's post type (plus any base tax/meta
 		// query baked into the listing itself) with NO facet selections
 		// applied, i.e. "how many posts exist here at all". Unlike 'total'
-		// below, this never changes as facets are toggled — it's a fixed
+		// above, this never changes as facets are toggled — it's a fixed
 		// reference number ("N of 1,234 shown"), not a filtered result count.
-		$grand_total_query = new WP_Query( array_merge( $base_args_without_paged, [
-			'fields'         => 'ids',
-			'posts_per_page' => 1,
-		] ) );
-		$grand_total       = $grand_total_query->found_posts;
+		// Same found_posts inflation risk applies here, so it's computed the
+		// same way.
+		$grand_total = $this->count_matching_posts( $base_args_without_paged );
 
 		// 8. Build and send response.
 		$response = [
 			'html'        => $html,
 			'counts'      => $counts,
-			'total'       => $query->found_posts,
+			'total'       => $total,
 			'grand_total' => $grand_total,
-			'max_pages'   => $query->max_num_pages,
+			'max_pages'   => $max_pages,
 			'page'        => $page,
 			'group'       => $group,
 			'query_args'  => WP_DEBUG ? $args : null,
@@ -310,6 +325,27 @@ class EtchFacets_Ajax_Handler {
 			'truncated' => $truncated,
 			'group'     => $group,
 		] );
+	}
+
+	/**
+	 * Count posts matching the given WP_Query args, immune to the
+	 * found_posts/SQL_CALC_FOUND_ROWS inflation described in handle_filter()
+	 * above. Runs a separate `fields => ids`, `no_found_rows => true` query
+	 * and counts the (already deduplicated) returned ID array directly,
+	 * rather than trusting WP_Query's own row count.
+	 *
+	 * @param array $args WP_Query args. Any `fields`/`posts_per_page`/
+	 *                    `no_found_rows` already present is overridden.
+	 * @return int Distinct matching post count.
+	 */
+	private function count_matching_posts( array $args ): int {
+		$args['fields']         = 'ids';
+		$args['posts_per_page'] = -1;
+		$args['no_found_rows']  = true;
+
+		$query = new WP_Query( $args );
+
+		return count( $query->posts );
 	}
 
 	/**
