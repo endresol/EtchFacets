@@ -339,6 +339,15 @@ class EtchFacets_Ajax_Handler {
 	 * @return int Distinct matching post count.
 	 */
 	private function count_matching_posts( array $args ): int {
+		// $args isn't always built via EtchFacets_Query_Builder::build_query_args()
+		// (the grand-total call below passes query_context straight through),
+		// so the post_status default it applies doesn't always reach here —
+		// apply it again rather than assume it already has one. See that
+		// method for why this matters.
+		if ( ! isset( $args['post_status'] ) ) {
+			$args['post_status'] = apply_filters( 'etchfacets/query/post_status', 'publish' );
+		}
+
 		$args['fields']         = 'ids';
 		$args['posts_per_page'] = -1;
 		$args['no_found_rows']  = true;

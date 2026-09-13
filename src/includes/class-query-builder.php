@@ -97,6 +97,29 @@ class EtchFacets_Query_Builder {
 			$args['meta_query'] = $meta_query;
 		}
 
+		// Scope to publicly-visible posts only. Every query this method
+		// builds is ultimately run either directly inside admin-ajax.php
+		// (both wp_ajax_* and wp_ajax_nopriv_* hooks route through it, so
+		// is_admin() is TRUE for every request there — logged-in or not) or
+		// on the front end via the pre_get_posts filter. WP_Query's default
+		// post_status expands to include drafts/pending/private posts for
+		// admin-context requests made by a user who can see them — e.g. a
+		// logged-in editor browsing the public listing would then see (and
+		// be counted toward) draft posts that the exact same URL, loaded
+		// normally on the front end, never returns. That mismatch between
+		// the AJAX-computed total and the real front-end query is what
+		// produces a "page 1 of 2" whose page 2 comes back empty. Pinning
+		// post_status keeps every EtchFacets query consistent regardless of
+		// who's asking or which code path built it.
+		if ( ! isset( $args['post_status'] ) ) {
+			/**
+			 * Filter the default post_status EtchFacets queries are scoped to.
+			 *
+			 * @param string|array $post_status Default 'publish'.
+			 */
+			$args['post_status'] = apply_filters( 'etchfacets/query/post_status', 'publish' );
+		}
+
 		return $args;
 	}
 

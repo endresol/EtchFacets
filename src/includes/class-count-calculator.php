@@ -117,7 +117,18 @@ class EtchFacets_Count_Calculator {
 	 * @return array Array of post IDs.
 	 */
 	private function get_all_post_ids( array $base_args ): array {
-		$args                   = $base_args;
+		$args = $base_args;
+
+		// $base_args is raw query_context, not run through
+		// EtchFacets_Query_Builder::build_query_args() — apply the same
+		// publish-only default it would otherwise apply. See that method
+		// for why: without it, this query (run from inside admin-ajax.php)
+		// would count drafts/pending/private posts for a logged-in facet
+		// count that the public listing never actually shows.
+		if ( ! isset( $args['post_status'] ) ) {
+			$args['post_status'] = apply_filters( 'etchfacets/query/post_status', 'publish' );
+		}
+
 		$args['fields']         = 'ids';
 		$args['posts_per_page'] = -1;
 		$args['no_found_rows']  = true;
