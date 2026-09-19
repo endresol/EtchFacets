@@ -40,12 +40,49 @@
 	 * Collapsible/Start Open props). Pure local UI state, unrelated to any
 	 * instance/group — the facet's own DOM never gets replaced by AJAX, so this
 	 * only needs to run once at page load.
+	 *
+	 * `toggle` and `choices` are hand-built in the Etch editor, so their tag
+	 * isn't guaranteed to be a natively focusable/operable one (often a
+	 * plain styled `<div>`) — this makes the pair behave like a proper
+	 * disclosure widget regardless of what tag the author used:
+	 *   - the toggle gets `role="button"` + `tabindex="0"` if it isn't
+	 *     already a native control, so it's reachable by Tab at all;
+	 *   - Enter/Space/ArrowDown/ArrowUp all open or close it from the
+	 *     toggle, matching the standard disclosure keyboard pattern;
+	 *   - the choice list is pulled out of the tab order (`inert`, with a
+	 *     manual tabindex fallback for browsers without it) while closed,
+	 *     so Tab skips straight over it instead of stepping through every
+	 *     checkbox of a section the user can't even see.
 	 */
 	function initCollapsibleFacets() {
+		let autoId = 0;
+
 		document.querySelectorAll('[data-etchfacet-collapsible="true"]').forEach((facetEl) => {
 			const toggle = facetEl.querySelector('.etchfacets-facet-toggle');
 			const choices = facetEl.querySelector('.etchfacets-facet-choices');
 			if (!toggle || !choices) return;
+
+			// Natively interactive elements already get Tab focus and fire
+			// `click` on their own activation keys (Enter for a link/button,
+			// Space for a button) — only bolt on the ARIA button role and
+			// tab stop for anything else the author might have used.
+			const isNativelyInteractive =
+				toggle.tagName === 'BUTTON' ||
+				(toggle.tagName === 'A' && toggle.hasAttribute('href')) ||
+				toggle.tagName === 'SUMMARY';
+
+			if (!isNativelyInteractive) {
+				if (!toggle.hasAttribute('role')) toggle.setAttribute('role', 'button');
+				if (!toggle.hasAttribute('tabindex')) toggle.tabIndex = 0;
+			}
+
+			if (!choices.id) choices.id = `etchfacets-choices-${++autoId}`;
+			toggle.setAttribute('aria-controls', choices.id);
+
+			// Every focusable descendant's tabindex as it was before we
+			// started forcing it to -1 while closed, so reopening restores
+			// each one exactly (rather than assuming none had one).
+			const restoreTabindex = new WeakMap();
 
 			// Animate max-height to the choice list's actual measured height
 			// (not a large fixed cap) so the roll-up/down transition tracks the
@@ -58,11 +95,66 @@
 				toggle.setAttribute('aria-expanded', String(open));
 				choices.style.maxHeight = open ? `${choices.scrollHeight}px` : '0px';
 				choices.style.opacity = open ? '1' : '0';
+
+				// `inert` removes the whole subtree from both the tab order
+				// and assistive tech in one go — the modern equivalent of
+				// `hidden` for content that still needs to be visible long
+				// enough to animate closed. Not every browser supports it
+				// yet, so also walk every focusable descendant and pull it
+				// out of the tab order by hand as a fallback; either
+				// mechanism alone is enough to fix the reported bug, so
+				// this stays correct even once `inert` support is universal.
+				choices.inert = !open;
+
+				const focusable = choices.querySelectorAll(
+					'a[href], button, input, select, textarea, [tabindex]'
+				);
+				focusable.forEach((el) => {
+					if (open) {
+						if (restoreTabindex.has(el)) {
+							const prev = restoreTabindex.get(el);
+							if (prev === null) el.removeAttribute('tabindex');
+							else el.setAttribute('tabindex', prev);
+							restoreTabindex.delete(el);
+						}
+					} else if (!restoreTabindex.has(el)) {
+						restoreTabindex.set(el, el.getAttribute('tabindex'));
+						el.setAttribute('tabindex', '-1');
+					}
+				});
 			};
 
 			setOpen(facetEl.getAttribute('data-etchfacet-open') !== 'false');
 
 			toggle.addEventListener('click', () => setOpen(!toggle.classList.contains('is-open')));
+
+			toggle.addEventListener('keydown', (e) => {
+				const isOpen = toggle.classList.contains('is-open');
+
+				switch (e.key) {
+					// Native buttons/links already turn these into a `click`
+					// (handled above) — only act here for a role="button"
+					// div/span that has no such built-in behavior.
+					case 'Enter':
+					case ' ':
+					case 'Spacebar':
+						if (isNativelyInteractive) return;
+						e.preventDefault();
+						setOpen(!isOpen);
+						break;
+
+					// No native element does this on its own, so it applies
+					// regardless of what tag the toggle is.
+					case 'ArrowDown':
+						e.preventDefault();
+						setOpen(true);
+						break;
+					case 'ArrowUp':
+						e.preventDefault();
+						setOpen(false);
+						break;
+				}
+			});
 		});
 	}
 
