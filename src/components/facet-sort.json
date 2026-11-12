@@ -1,0 +1,186 @@
+{
+	"name": "Facet - Sort",
+	"key": "FacetSort",
+	"description": "EtchFacets sort facet. Fixed 5-option list mapped server-side to orderby/order (date_desc, date_asc, title_asc, title_desc, relevance). Always keep a non-empty option selected as default.",
+	"properties": [
+		{
+			"name": "Name",
+			"key": "name",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "sort"
+		},
+		{
+			"name": "Label",
+			"key": "label",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "Sort by"
+		}
+	],
+	"blocks": [
+		{
+			"type": "etch/element",
+			"version": 1,
+			"tag": "label",
+			"context": {
+				"name": "Facet Sort Root"
+			},
+			"attributes": {
+				"class": "etchfacets-sort__label",
+				"data-etchfacet": "{props.name}",
+				"data-etchfacet-source": "sort"
+			},
+			"options": {},
+			"children": [
+				{
+					"type": "etch/text",
+					"version": 1,
+					"context": {
+						"name": "Text"
+					},
+					"text": "{props.label} ",
+					"options": {},
+					"children": []
+				},
+				{
+					"type": "etch/element",
+					"version": 1,
+					"tag": "select",
+					"context": {
+						"name": "Select"
+					},
+					"attributes": {
+						"class": "etchfacets-select",
+						"name": "{props.name}"
+					},
+					"options": {},
+					"children": [
+						{
+							"type": "etch/element",
+							"version": 1,
+							"tag": "option",
+							"context": {
+								"name": "Option"
+							},
+							"attributes": {
+								"value": "date_desc"
+							},
+							"options": {},
+							"children": [
+								{
+									"type": "etch/text",
+									"version": 1,
+									"context": {
+										"name": "Text"
+									},
+									"text": "Newest first ",
+									"options": {},
+									"children": []
+								}
+							]
+						},
+						{
+							"type": "etch/element",
+							"version": 1,
+							"tag": "option",
+							"context": {
+								"name": "Option"
+							},
+							"attributes": {
+								"value": "date_asc"
+							},
+							"options": {},
+							"children": [
+								{
+									"type": "etch/text",
+									"version": 1,
+									"context": {
+										"name": "Text"
+									},
+									"text": "Oldest first ",
+									"options": {},
+									"children": []
+								}
+							]
+						},
+						{
+							"type": "etch/element",
+							"version": 1,
+							"tag": "option",
+							"context": {
+								"name": "Option"
+							},
+							"attributes": {
+								"value": "title_asc"
+							},
+							"options": {},
+							"children": [
+								{
+									"type": "etch/text",
+									"version": 1,
+									"context": {
+										"name": "Text"
+									},
+									"text": "Title A–Z ",
+									"options": {},
+									"children": []
+								}
+							]
+						},
+						{
+							"type": "etch/element",
+							"version": 1,
+							"tag": "option",
+							"context": {
+								"name": "Option"
+							},
+							"attributes": {
+								"value": "title_desc"
+							},
+							"options": {},
+							"children": [
+								{
+									"type": "etch/text",
+									"version": 1,
+									"context": {
+										"name": "Text"
+									},
+									"text": "Title Z–A ",
+									"options": {},
+									"children": []
+								}
+							]
+						},
+						{
+							"type": "etch/element",
+							"version": 1,
+							"tag": "option",
+							"context": {
+								"name": "Option"
+							},
+							"attributes": {
+								"value": "relevance"
+							},
+							"options": {},
+							"children": [
+								{
+									"type": "etch/text",
+									"version": 1,
+									"context": {
+										"name": "Text"
+									},
+									"text": "Relevance ",
+									"options": {},
+									"children": []
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	]
+}

@@ -1,0 +1,416 @@
+{
+	"name": "Facet - Range",
+	"key": "FacetRange",
+	"description": "EtchFacets range/slider facet (meta_range: sources). Two overlaid native range inputs with a real fill-bar div (positioned via each thumb's own oninput handler, which also clamps against the other thumb). The plugin's JS re-invokes each input's .oninput property after every server bounds sync/reset, keeping the fill and value labels accurate.",
+	"properties": [
+		{
+			"name": "Name",
+			"key": "name",
+			"type": {
+				"primitive": "string"
+			},
+			"default": ""
+		},
+		{
+			"name": "Source",
+			"key": "source",
+			"type": {
+				"primitive": "string"
+			},
+			"default": ""
+		},
+		{
+			"name": "Logic",
+			"key": "logic",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "or"
+		},
+		{
+			"name": "Label",
+			"key": "label",
+			"type": {
+				"primitive": "string"
+			},
+			"default": ""
+		},
+		{
+			"name": "Unit",
+			"key": "unit",
+			"type": {
+				"primitive": "string"
+			},
+			"default": ""
+		},
+		{
+			"name": "Collapsible",
+			"key": "collapsible",
+			"type": {
+				"primitive": "boolean"
+			},
+			"default": false
+		},
+		{
+			"name": "Start Open",
+			"key": "startOpen",
+			"type": {
+				"primitive": "boolean"
+			},
+			"default": true
+		}
+	],
+	"blocks": [
+		{
+			"type": "etch/element",
+			"version": 1,
+			"tag": "div",
+			"context": {
+				"name": "Facet Range Root"
+			},
+			"attributes": {
+				"class": "etchfacets-facet",
+				"data-etchfacet": "{props.name}",
+				"data-etchfacet-collapsible": "{props.collapsible}",
+				"data-etchfacet-logic": "{props.logic}",
+				"data-etchfacet-open": "{props.startOpen}",
+				"data-etchfacet-source": "{props.source}"
+			},
+			"options": {},
+			"children": [
+				{
+					"type": "etch/element",
+					"version": 1,
+					"tag": "div",
+					"context": {},
+					"attributes": {
+						"class": "etchfacets-facet-header"
+					},
+					"options": {},
+					"children": [
+						{
+							"type": "etch/condition",
+							"version": 1,
+							"context": {},
+							"conditionString": "props.label !== \"\"",
+							"options": {},
+							"children": [
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "h3",
+									"context": {},
+									"attributes": {
+										"class": "etchfacets-facet-label"
+									},
+									"options": {},
+									"children": [
+										{
+											"type": "etch/text",
+											"version": 1,
+											"context": {
+												"name": "Text"
+											},
+											"text": "{props.label}",
+											"options": {},
+											"children": []
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "etch/condition",
+							"version": 1,
+							"context": {},
+							"conditionString": "props.collapsible === true",
+							"options": {},
+							"children": [
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "button",
+									"context": {
+										"name": "Toggle"
+									},
+									"attributes": {
+										"aria-expanded": "{props.startOpen}",
+										"class": "etchfacets-facet-toggle",
+										"type": "button"
+									},
+									"options": {},
+									"children": [
+										{
+											"type": "etch/element",
+											"version": 1,
+											"tag": "span",
+											"context": {
+												"name": "Etchfacets Facet Toggle Icon"
+											},
+											"attributes": {
+												"aria-hidden": "true",
+												"class": "etchfacets-facet-toggle-icon"
+											},
+											"options": {},
+											"children": [
+												{
+													"type": "etch/svg",
+													"version": 1,
+													"context": {
+														"name": "Svg"
+													},
+													"attributes": {
+														"class": "etchfacets-facet-toggle-icon__svg",
+														"src": "{{etchfacets_url}}assets/icons/circle-chevron-down-stroke-rounded.svg"
+													},
+													"options": {},
+													"children": []
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "etch/element",
+					"version": 1,
+					"tag": "fieldset",
+					"context": {
+						"name": "Choices"
+					},
+					"attributes": {
+						"class": "etchfacets-facet-choices"
+					},
+					"options": {},
+					"children": [
+						{
+							"type": "etch/condition",
+							"version": 1,
+							"context": {
+								"name": "If label"
+							},
+							"conditionString": "props.label !== \"\"",
+							"options": {},
+							"children": [
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "legend",
+									"context": {
+										"name": "Legend"
+									},
+									"attributes": {
+										"class": "etchfacets-facet-legend"
+									},
+									"options": {},
+									"children": [
+										{
+											"type": "etch/text",
+											"version": 1,
+											"context": {
+												"name": "Text"
+											},
+											"text": "{props.label}",
+											"options": {},
+											"children": []
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "etch/element",
+							"version": 1,
+							"tag": "div",
+							"context": {
+								"name": "Track"
+							},
+							"attributes": {
+								"class": "etchfacets-range-track"
+							},
+							"options": {},
+							"children": [
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "div",
+									"context": {
+										"name": "Line"
+									},
+									"attributes": {
+										"class": "etchfacets-range-line"
+									},
+									"options": {},
+									"children": []
+								},
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "div",
+									"context": {
+										"name": "Fill"
+									},
+									"attributes": {
+										"class": "etchfacets-range-fill",
+										"style": "left: 0%; right: 0%;"
+									},
+									"options": {},
+									"children": []
+								},
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "input",
+									"context": {
+										"name": "Min"
+									},
+									"attributes": {
+										"class": "etchfacet-min",
+										"max": "100",
+										"min": "0",
+										"oninput": "var track=this.closest('.etchfacets-range-track');var mx=track.querySelector('.etchfacet-max');this.max=mx.max;mx.min=this.min;if(+this.value>+mx.value)this.value=mx.value;var p=(this.value-this.min)/(this.max-this.min)*100;track.querySelector('.etchfacets-range-fill').style.left=p+'%';this.closest('.etchfacets-facet').querySelector('.etchfacets-range-value-min').textContent=this.value;",
+										"step": "1",
+										"type": "range",
+										"value": "0"
+									},
+									"options": {},
+									"children": []
+								},
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "input",
+									"context": {
+										"name": "Max"
+									},
+									"attributes": {
+										"class": "etchfacet-max",
+										"max": "100",
+										"min": "0",
+										"oninput": "var track=this.closest('.etchfacets-range-track');var mn=track.querySelector('.etchfacet-min');this.min=mn.min;mn.max=this.max;if(+this.value<+mn.value)this.value=mn.value;var p=100-((this.value-this.min)/(this.max-this.min)*100);track.querySelector('.etchfacets-range-fill').style.right=p+'%';this.closest('.etchfacets-facet').querySelector('.etchfacets-range-value-max').textContent=this.value;",
+										"step": "1",
+										"type": "range",
+										"value": "100"
+									},
+									"options": {},
+									"children": []
+								}
+							]
+						},
+						{
+							"type": "etch/element",
+							"version": 1,
+							"tag": "div",
+							"context": {
+								"name": "Value"
+							},
+							"attributes": {
+								"class": "etchfacets-range-value"
+							},
+							"options": {},
+							"children": [
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "span",
+									"context": {
+										"name": "Value Min"
+									},
+									"attributes": {
+										"class": "etchfacets-range-value-min"
+									},
+									"options": {},
+									"children": [
+										{
+											"type": "etch/text",
+											"version": 1,
+											"context": {
+												"name": "Text"
+											},
+											"text": "0",
+											"options": {},
+											"children": []
+										}
+									]
+								},
+								{
+									"type": "etch/text",
+									"version": 1,
+									"context": {
+										"name": "Separator"
+									},
+									"text": " – ",
+									"options": {},
+									"children": []
+								},
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "span",
+									"context": {
+										"name": "Value Max"
+									},
+									"attributes": {
+										"class": "etchfacets-range-value-max"
+									},
+									"options": {},
+									"children": [
+										{
+											"type": "etch/text",
+											"version": 1,
+											"context": {
+												"name": "Text"
+											},
+											"text": "100",
+											"options": {},
+											"children": []
+										}
+									]
+								},
+								{
+									"type": "etch/text",
+									"version": 1,
+									"context": {
+										"name": "Unit"
+									},
+									"text": " {props.unit}",
+									"options": {},
+									"children": []
+								},
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "button",
+									"context": {
+										"name": "Reset"
+									},
+									"attributes": {
+										"aria-label": "Reset range",
+										"class": "etchfacets-range-reset",
+										"type": "button"
+									},
+									"options": {},
+									"children": [
+										{
+											"type": "etch/text",
+											"version": 1,
+											"context": {
+												"name": "Text"
+											},
+											"text": "↺",
+											"options": {},
+											"children": []
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	]
+}

@@ -1,0 +1,40 @@
+{
+	"name": "Facets Wrapper",
+	"key": "FacetsWrapper",
+	"description": "EtchFacets multi-instance wrapper - everything inside its Slot is scoped to this facet/listing instance by DOM containment.",
+	"properties": [
+		{
+			"name": "Group",
+			"key": "group",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "main"
+		}
+	],
+	"blocks": [
+		{
+			"type": "etch/element",
+			"version": 1,
+			"tag": "div",
+			"context": {
+				"name": "Facets Wrapper Root"
+			},
+			"attributes": {
+				"class": "etchfacets-instance",
+				"data-etchfacets-group": "{props.group}"
+			},
+			"options": {},
+			"children": [
+				{
+					"type": "etch/slot-placeholder",
+					"version": 1,
+					"context": {},
+					"options": {},
+					"children": [],
+					"slotName": "content"
+				}
+			]
+		}
+	]
+}

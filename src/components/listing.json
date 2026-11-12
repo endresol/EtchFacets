@@ -1,0 +1,67 @@
+{
+	"name": "Listing",
+	"key": "Listing",
+	"description": "EtchFacets listing wrapper - place your own WP Query Loop + card markup inside the Slot; the plugin swaps this element's content on AJAX filter/paginate.",
+	"properties": [
+		{
+			"name": "Post Type",
+			"key": "postType",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "post"
+		},
+		{
+			"name": "Posts Per Page",
+			"key": "postsPerPage",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "12"
+		},
+		{
+			"name": "Order By",
+			"key": "orderby",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "date"
+		},
+		{
+			"name": "Order",
+			"key": "order",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "DESC"
+		}
+	],
+	"blocks": [
+		{
+			"type": "etch/element",
+			"version": 1,
+			"tag": "div",
+			"context": {
+				"name": "Listing Root"
+			},
+			"attributes": {
+				"class": "etchfacets-template",
+				"data-etchfacets-order": "{props.order}",
+				"data-etchfacets-orderby": "{props.orderby}",
+				"data-etchfacets-post-type": "{props.postType}",
+				"data-etchfacets-posts-per-page": "{props.postsPerPage}"
+			},
+			"options": {},
+			"children": [
+				{
+					"type": "etch/slot-placeholder",
+					"version": 1,
+					"context": {},
+					"options": {},
+					"children": [],
+					"slotName": "listing"
+				}
+			]
+		}
+	]
+}

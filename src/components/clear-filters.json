@@ -1,0 +1,42 @@
+{
+	"name": "Clear Filters",
+	"key": "ClearFilters",
+	"description": "EtchFacets reset button. Clears every facet input on the page (within its scoping Facets Wrapper) and refetches.",
+	"properties": [
+		{
+			"name": "Text",
+			"key": "text",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "Reset Filters"
+		}
+	],
+	"blocks": [
+		{
+			"type": "etch/element",
+			"version": 1,
+			"tag": "button",
+			"context": {
+				"name": "Clear Filters Root"
+			},
+			"attributes": {
+				"class": "etchfacets-reset",
+				"type": "button"
+			},
+			"options": {},
+			"children": [
+				{
+					"type": "etch/text",
+					"version": 1,
+					"context": {
+						"name": "Text"
+					},
+					"text": "{props.text}",
+					"options": {},
+					"children": []
+				}
+			]
+		}
+	]
+}

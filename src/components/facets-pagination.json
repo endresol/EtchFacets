@@ -1,0 +1,102 @@
+{
+	"name": "Facets Pagination",
+	"key": "FacetsPagination",
+	"description": "EtchFacets Prev/Next pager. Status text and disabled state are set entirely by the JS — leave the status span empty.",
+	"properties": [
+		{
+			"name": "Prev Text",
+			"key": "prevText",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "Previous"
+		},
+		{
+			"name": "Next Text",
+			"key": "nextText",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "Next"
+		}
+	],
+	"blocks": [
+		{
+			"type": "etch/element",
+			"version": 1,
+			"tag": "div",
+			"context": {
+				"name": "Pagination Root"
+			},
+			"attributes": {
+				"class": "etchfacets-pagination"
+			},
+			"options": {},
+			"children": [
+				{
+					"type": "etch/element",
+					"version": 1,
+					"tag": "button",
+					"context": {
+						"name": "Prev"
+					},
+					"attributes": {
+						"class": "etchfacets-pagination-prev",
+						"type": "button"
+					},
+					"options": {},
+					"children": [
+						{
+							"type": "etch/text",
+							"version": 1,
+							"context": {
+								"name": "Text"
+							},
+							"text": "{props.prevText}",
+							"options": {},
+							"children": []
+						}
+					]
+				},
+				{
+					"type": "etch/element",
+					"version": 1,
+					"tag": "span",
+					"context": {
+						"name": "Status"
+					},
+					"attributes": {
+						"class": "etchfacets-pagination-status"
+					},
+					"options": {},
+					"children": []
+				},
+				{
+					"type": "etch/element",
+					"version": 1,
+					"tag": "button",
+					"context": {
+						"name": "Next"
+					},
+					"attributes": {
+						"class": "etchfacets-pagination-next",
+						"type": "button"
+					},
+					"options": {},
+					"children": [
+						{
+							"type": "etch/text",
+							"version": 1,
+							"context": {
+								"name": "Text"
+							},
+							"text": "{props.nextText}",
+							"options": {},
+							"children": []
+						}
+					]
+				}
+			]
+		}
+	]
+}

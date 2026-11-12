@@ -1,0 +1,366 @@
+{
+	"name": "Facet - Dropdown",
+	"key": "FacetDropdown",
+	"description": "EtchFacets dropdown facet. Renders a with an \"All\" option plus one per taxonomy term (or a single toggle option for meta: sources).",
+	"properties": [
+		{
+			"name": "Name",
+			"key": "name",
+			"type": {
+				"primitive": "string"
+			},
+			"default": ""
+		},
+		{
+			"name": "Source",
+			"key": "source",
+			"type": {
+				"primitive": "string"
+			},
+			"default": ""
+		},
+		{
+			"name": "Logic",
+			"key": "logic",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "or"
+		},
+		{
+			"name": "Label",
+			"key": "label",
+			"type": {
+				"primitive": "string"
+			},
+			"default": ""
+		},
+		{
+			"name": "Show Counts",
+			"key": "showCounts",
+			"type": {
+				"primitive": "boolean"
+			},
+			"default": "{false}"
+		},
+		{
+			"name": "Collapsible",
+			"key": "collapsible",
+			"type": {
+				"primitive": "boolean"
+			},
+			"default": false
+		},
+		{
+			"name": "Start Open",
+			"key": "startOpen",
+			"type": {
+				"primitive": "boolean"
+			},
+			"default": true
+		}
+	],
+	"blocks": [
+		{
+			"type": "etch/element",
+			"version": 1,
+			"tag": "div",
+			"context": {
+				"name": "Facet Dropdown Root"
+			},
+			"attributes": {
+				"class": "etchfacets-facet",
+				"data-etchfacet": "{props.name}",
+				"data-etchfacet-collapsible": "{props.collapsible}",
+				"data-etchfacet-logic": "{props.logic}",
+				"data-etchfacet-open": "{props.startOpen}",
+				"data-etchfacet-source": "{props.source}"
+			},
+			"options": {},
+			"children": [
+				{
+					"type": "etch/element",
+					"version": 1,
+					"tag": "div",
+					"context": {},
+					"attributes": {
+						"class": "etchfacets-facet-header"
+					},
+					"options": {},
+					"children": [
+						{
+							"type": "etch/condition",
+							"version": 1,
+							"context": {},
+							"conditionString": "props.label !== \"\"",
+							"options": {},
+							"children": [
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "h3",
+									"context": {},
+									"attributes": {
+										"class": "etchfacets-facet-label"
+									},
+									"options": {},
+									"children": [
+										{
+											"type": "etch/text",
+											"version": 1,
+											"context": {
+												"name": "Text"
+											},
+											"text": "{props.label}",
+											"options": {},
+											"children": []
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "etch/condition",
+							"version": 1,
+							"context": {},
+							"conditionString": "props.collapsible === true",
+							"options": {},
+							"children": [
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "button",
+									"context": {
+										"name": "Toggle"
+									},
+									"attributes": {
+										"aria-expanded": "{props.startOpen}",
+										"class": "etchfacets-facet-toggle",
+										"type": "button"
+									},
+									"options": {},
+									"children": [
+										{
+											"type": "etch/element",
+											"version": 1,
+											"tag": "span",
+											"context": {
+												"name": "Etchfacets Facet Toggle Icon"
+											},
+											"attributes": {
+												"aria-hidden": "true",
+												"class": "etchfacets-facet-toggle-icon"
+											},
+											"options": {},
+											"children": [
+												{
+													"type": "etch/svg",
+													"version": 1,
+													"context": {
+														"name": "Svg"
+													},
+													"attributes": {
+														"class": "etchfacets-facet-toggle-icon__svg",
+														"src": "{{etchfacets_url}}assets/icons/circle-chevron-down-stroke-rounded.svg"
+													},
+													"options": {},
+													"children": []
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "etch/element",
+					"version": 1,
+					"tag": "div",
+					"context": {},
+					"attributes": {
+						"class": "etchfacets-facet-choices"
+					},
+					"options": {},
+					"children": [
+						{
+							"type": "etch/element",
+							"version": 1,
+							"tag": "select",
+							"context": {
+								"name": "Select"
+							},
+							"attributes": {
+								"class": "etchfacets-select",
+								"name": "{props.name}"
+							},
+							"options": {},
+							"children": [
+								{
+									"type": "etch/element",
+									"version": 1,
+									"tag": "option",
+									"context": {
+										"name": "All Option"
+									},
+									"attributes": {
+										"value": ""
+									},
+									"options": {},
+									"children": [
+										{
+											"type": "etch/text",
+											"version": 1,
+											"context": {
+												"name": "Text"
+											},
+											"text": "All",
+											"options": {},
+											"children": []
+										}
+									]
+								},
+								{
+									"type": "etch/condition",
+									"version": 1,
+									"context": {},
+									"conditionString": "props.source.startsWith(\"taxonomy:\")",
+									"options": {},
+									"children": [
+										{
+											"type": "etch/loop",
+											"version": 1,
+											"context": {},
+											"loopId": "zdep6rq",
+											"itemId": "item",
+											"loopParams": {
+												"$taxname": "props.source.split(':')[1]"
+											},
+											"options": {},
+											"children": [
+												{
+													"type": "etch/element",
+													"version": 1,
+													"tag": "option",
+													"context": {
+														"name": "Option"
+													},
+													"attributes": {
+														"value": "{item.slug}"
+													},
+													"options": {},
+													"children": [
+														{
+															"type": "etch/condition",
+															"version": 1,
+															"context": {},
+															"conditionString": "props.showCounts",
+															"options": {},
+															"children": [
+																{
+																	"type": "etch/text",
+																	"version": 1,
+																	"context": {
+																		"name": "Text"
+																	},
+																	"text": "{item.name} ({item.count})",
+																	"options": {},
+																	"children": []
+																}
+															]
+														},
+														{
+															"type": "etch/condition",
+															"version": 1,
+															"context": {},
+															"conditionString": "!props.showCounts",
+															"options": {},
+															"children": [
+																{
+																	"type": "etch/text",
+																	"version": 1,
+																	"context": {
+																		"name": "Text"
+																	},
+																	"text": "{item.name}",
+																	"options": {},
+																	"children": []
+																}
+															]
+														}
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "etch/condition",
+									"version": 1,
+									"context": {},
+									"conditionString": "props.source.startsWith(\"meta:\")",
+									"options": {},
+									"children": [
+										{
+											"type": "etch/element",
+											"version": 1,
+											"tag": "option",
+											"context": {
+												"name": "Option"
+											},
+											"attributes": {
+												"value": "1"
+											},
+											"options": {},
+											"children": [
+												{
+													"type": "etch/condition",
+													"version": 1,
+													"context": {},
+													"conditionString": "props.showCounts",
+													"options": {},
+													"children": [
+														{
+															"type": "etch/text",
+															"version": 1,
+															"context": {
+																"name": "Text"
+															},
+															"text": "{props.label} (0)",
+															"options": {},
+															"children": []
+														}
+													]
+												},
+												{
+													"type": "etch/condition",
+													"version": 1,
+													"context": {},
+													"conditionString": "!props.showCounts",
+													"options": {},
+													"children": [
+														{
+															"type": "etch/text",
+															"version": 1,
+															"context": {
+																"name": "Text"
+															},
+															"text": "{props.label}",
+															"options": {},
+															"children": []
+														}
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	]
+}

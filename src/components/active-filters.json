@@ -1,0 +1,22 @@
+{
+	"name": "Active Filters",
+	"key": "ActiveFilters",
+	"description": "EtchFacets active-filters summary. Empty container — the JS destructively rebuilds its contents with a removable chip per active facet selection.",
+	"properties": [],
+	"blocks": [
+		{
+			"type": "etch/element",
+			"version": 1,
+			"tag": "div",
+			"context": {
+				"name": "Active Filters Root"
+			},
+			"attributes": {
+				"class": "etchfacets-active-filters",
+				"data-etchfacets-active-filters": ""
+			},
+			"options": {},
+			"children": []
+		}
+	]
+}

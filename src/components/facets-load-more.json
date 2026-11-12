@@ -1,0 +1,42 @@
+{
+	"name": "Facets Load More",
+	"key": "FacetsLoadMore",
+	"description": "EtchFacets load-more button. Appends the next page of results to the listing instead of replacing it; auto-disables once every post has been loaded.",
+	"properties": [
+		{
+			"name": "Text",
+			"key": "text",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "Load more"
+		}
+	],
+	"blocks": [
+		{
+			"type": "etch/element",
+			"version": 1,
+			"tag": "button",
+			"context": {
+				"name": "Load More Root"
+			},
+			"attributes": {
+				"class": "etchfacets-load-more",
+				"type": "button"
+			},
+			"options": {},
+			"children": [
+				{
+					"type": "etch/text",
+					"version": 1,
+					"context": {
+						"name": "Text"
+					},
+					"text": "{props.text}",
+					"options": {},
+					"children": []
+				}
+			]
+		}
+	]
+}

@@ -1,0 +1,42 @@
+{
+	"name": "Facets No Results",
+	"key": "FacetsNoResults",
+	"description": "EtchFacets \"no results\" message. Place inside the Facets Wrapper, outside the Listing. The plugin shows it only when the result count is 0.",
+	"properties": [
+		{
+			"name": "Text",
+			"key": "text",
+			"type": {
+				"primitive": "string"
+			},
+			"default": "No results match these filters."
+		}
+	],
+	"blocks": [
+		{
+			"type": "etch/element",
+			"version": 1,
+			"tag": "p",
+			"context": {
+				"name": "No results"
+			},
+			"attributes": {
+				"class": "etchfacets-no-results",
+				"data-etchfacets-no-results": ""
+			},
+			"options": {},
+			"children": [
+				{
+					"type": "etch/text",
+					"version": 1,
+					"context": {
+						"name": "Text"
+					},
+					"text": "{props.text}",
+					"options": {},
+					"children": []
+				}
+			]
+		}
+	]
+}

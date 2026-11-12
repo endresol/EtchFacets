@@ -24,9 +24,27 @@ src/
 │   ├── js/etchfacets-map.js        # Google Maps facet module
 │   ├── js/etchfacets-builder.js    # Etch editor Settings Bar control
 │   └── css/etchfacets.css          # Minimal base styles
+└── components/*.json               # The Etch components, exported unstyled (see below)
 ```
 
-The repo root contains only docs/CI (`FACETS.md`, `PLUGIN_REFERENCE.md`, `DEPLOY.md`, `IMPLEMENTATION_PLAN.md`, `.github/`). These files are **excluded** from the release zip — only `src/` ships.
+The repo root contains only docs/CI (`FACETS.md`, `PLUGIN_REFERENCE.md`, `DEPLOY.md`, `IMPLEMENTATION_PLAN.md`, `.github/`) and `scripts/`. These are **excluded** from the release zip — only `src/` ships.
+
+## Etch components (`src/components/`)
+
+The facet components ("Facet - Checkboxes", "Listing", "Facets Wrapper" …) are built in
+Etch on the test site, https://etchfacetstestsite.local (page "EtchFacetComponents" shows them
+all), and copied from there to client sites. `src/components/` holds them as JSON, so changes
+show up in git:
+
+```bash
+npm run export-components            # needs the Etch Connector + the builder tab "EtchFacetsTest"
+npm run export-components -- --check # exit 1 if the files are out of date
+```
+
+**The test site is the source of truth.** Change a component there, then export and commit. Don't hand-edit
+the JSON. The files are unstyled (no Etch style ids, only class names) and site-neutral; the
+format is in `src/components/README.md`. Nothing reads them yet: a later step is an
+"Add components" button in the builder popup that creates them through `etch.components`.
 
 ## Architecture
 
