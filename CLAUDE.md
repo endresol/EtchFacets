@@ -46,6 +46,13 @@ the JSON. The files are unstyled (no Etch style ids, only class names) and site-
 format is in `src/components/README.md`. Nothing reads them yet: a later step is an
 "Add components" button in the builder popup that creates them through `etch.components`.
 
+**Open, not started (noted 2026-11-12): a styling system for the components.** Before building
+the installer, plan how styling works so installing or updating a component never overwrites
+a site's own styling. One idea is class props: the component takes extra class names as
+properties, the site styles those, and the plugin owns only the base `etchfacets-*` classes.
+Today each site styles the shared `etchfacets-*` classes directly in Etch (DEEP does), so
+re-importing a component there would be safe for markup but not a design. Decide this first.
+
 ## Architecture
 
 Two filtering paths run on every facet interaction:
