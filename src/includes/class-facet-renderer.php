@@ -161,7 +161,7 @@ class EtchFacets_Facet_Renderer {
 
 		switch ( $type ) {
 			case 'search':
-				$html .= $this->render_search_input();
+				$html .= $this->render_search_input( $label );
 				break;
 
 			case 'range':
@@ -283,10 +283,17 @@ class EtchFacets_Facet_Renderer {
 	/**
 	 * Render a search input for the search facet type.
 	 *
+	 * The placeholder alone is not an accessible name (it disappears while
+	 * typing and isn't reliably announced), so the input always gets an
+	 * aria-label: the facet's label when one is set, otherwise "Search".
+	 *
+	 * @param string $label The facet's label attribute (may be empty).
 	 * @return string The search input HTML.
 	 */
-	private function render_search_input(): string {
-		return '<input type="search" placeholder="' . esc_attr__( 'Search...', 'etchfacets' ) . '" class="etchfacets-search-input">';
+	private function render_search_input( string $label = '' ): string {
+		$name = '' !== $label ? $label : __( 'Search', 'etchfacets' );
+
+		return '<input type="search" placeholder="' . esc_attr__( 'Search...', 'etchfacets' ) . '" aria-label="' . esc_attr( $name ) . '" class="etchfacets-search-input">';
 	}
 
 	/**

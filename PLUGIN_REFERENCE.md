@@ -68,7 +68,8 @@ Registers `wp_ajax_etchfacets_filter` / `wp_ajax_nopriv_etchfacets_filter`.
 - Builds and runs WP_Query via QueryBuilder
 - Captures loop HTML with `ob_start()`
 - Calculates counts via CountCalculator
-- Returns JSON: `{ html, counts, total, max_pages, page }`
+- Returns JSON: `{ html, counts, total, grand_total, max_pages, page }`. Each
+  choice in `counts` is `{ value, label, count, base_count }`.
 
 ### `EtchFacets_Count_Calculator`
 For each facet, calculates how many results each choice would return.
@@ -79,6 +80,10 @@ For each facet, calculates how many results each choice would return.
 3. For taxonomy: direct SQL on `term_relationships` grouped by term
 4. For meta: direct SQL on `postmeta` grouped by `meta_value`
 5. For meta_range: SQL MIN/MAX on numeric meta values
+6. When any OTHER facet is active, repeat 3/4 with no facets applied to get
+   each choice's `base_count`, then merge: every choice in the base set is
+   returned, with `count` 0 when the filtered set lacks it. (Without other
+   active facets the filtered set already is the base set, so no extra query.)
 
 ### `EtchFacets_Facet_Renderer`
 Provides shortcodes and a PHP helper for rendering facet UI.
@@ -141,6 +146,9 @@ The primary integration method. The developer builds markup in Etch and adds the
 | `data-etchfacet` | Yes | Unique facet name |
 | `data-etchfacet-source` | Yes | Data source (e.g., `taxonomy:category`, `meta:color`) |
 | `data-etchfacet-logic` | No | `or` (default) or `and` — logic within this facet |
+| `data-etchfacet-label` | No | Human-readable group name for chips and fallback control names, when the facet has no `.etchfacets-facet-label` / heading |
+| `data-etchfacet-hide-empty` | No | `true` also hides choices at 0 because of other facets (default: shown with 0, disabled) |
+| `data-etchfacet-hide-unused` | No | `false` keeps choices with no posts at all visible (default: hidden) |
 
 ### Listing container
 ```html
@@ -163,7 +171,8 @@ Or with individual attributes (Etch-friendly):
 ```html
 <span class="etchfacet-count"></span>
 ```
-JS auto-updates these with `(N)` after each filter.
+JS auto-updates the number after each filter, keeping any parentheses or other
+text the template put around it.
 
 ### Reset button
 ```html
@@ -174,6 +183,12 @@ JS auto-updates these with `(N)` after each filter.
 ```html
 <span data-etchfacets-total></span>
 ```
+
+### No-results message
+```html
+<p data-etchfacets-no-results>No resources match these filters.</p>
+```
+Shown only while the filtered count is 0. Place it outside `.etchfacets-template`.
 
 ### Active filters summary
 ```html
@@ -191,10 +206,11 @@ JS keeps this populated with a removable chip per active facet value. See
 | `.etchfacets-template` | Developer | Marks the listing container |
 | `.etchfacets-loading` | JS (during fetch) | Loading state — default: opacity 0.4, no pointer events |
 | `.etchfacet-count` | Developer | Count badge next to choices |
-| `.etchfacet-ghost` | JS | Choice has 0 results — default: opacity 0.35, no pointer events |
-| `.etchfacet-hidden` | JS | Choice has 0 results and unchecked — default: `display: none` |
+| `.etchfacet-ghost` | JS | Unselected choice at 0 because of other active facets; its input is `disabled`. Default: `cursor: not-allowed` only, text stays readable |
+| `.etchfacet-hidden` | JS | Unselected choice with no posts at all (or any 0 with `data-etchfacet-hide-empty="true"`) — `display: none` |
 | `.etchfacets-reset` | Developer | Reset button |
-| `.etchfacets-no-results` | JS/PHP | Shown when query returns 0 posts |
+| `.etchfacets-no-results` | JS/PHP | Fallback message put inside the listing when the fetched page has no `.etchfacets-template` |
+| `.etchfacets-status` / `.etchfacets-sr-only` | JS | Visually hidden `role="status"` region announcing the result count |
 | `.etchfacets-hierarchy` | Developer | Hierarchical tree facet container |
 | `.etchfacets-tree-item` | Developer | Single item in hierarchy |
 | `.etchfacets-tree-toggle` | Developer | Expand/collapse button (+/−) |
@@ -259,6 +275,7 @@ window.EtchFacets.on('error', fn)    // Listen to etchfacets:error event
 | Hook | Type | Description |
 |---|---|---|
 | `etchfacets_ajax_response` | Filter | Modify the AJAX JSON response before sending |
+| `etchfacets/js_config` | Filter | Modify `window.etchfacetsConfig`, including the `i18n` strings the JS writes for screen readers (`resultsOne`, `resultsMany`, `noResults`, `search`, `minimum`, `maximum`, `remove`, `subcategories`) |
 
 ---
 

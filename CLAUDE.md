@@ -34,13 +34,17 @@ Two filtering paths run on every facet interaction:
 
 1. **Page fetch** — JS fetches the full page URL with facet params (`_facetname=val&_src_facetname=taxonomy:category&_logic_facetname=or`). The `pre_get_posts` hook (`etchfacets_filter_query`) modifies matching WP_Queries. JS extracts `.etchfacets-template` from the response HTML and swaps it in.
 
-2. **Count fetch** — A separate `admin-ajax.php` POST (`etchfacets_filter` action) handled by `EtchFacets_Ajax_Handler`. For each facet it builds a query *excluding that facet's own selections* (so counts reflect what toggling a choice would return), then hits the DB directly via `term_relationships` or `postmeta` SQL grouped queries. Returns `{ html, counts, total, max_pages, page }`.
+2. **Count fetch** — A separate `admin-ajax.php` POST (`etchfacets_filter` action) handled by `EtchFacets_Ajax_Handler`. For each facet it builds a query *excluding that facet's own selections* (so counts reflect what toggling a choice would return), then hits the DB directly via `term_relationships` or `postmeta` SQL grouped queries. Returns `{ html, counts, total, grand_total, max_pages, page }`. Each choice in `counts` also has a `base_count` (its count with no facets applied); the JS hides choices whose `base_count` is 0 and disables (`.etchfacet-ghost`) unselected choices that are at 0 only because of other facets.
 
 ### Key class responsibilities
 
 - **`EtchFacets_Query_Builder`** — `build_query_args()` / `build_query_args_excluding()`. Between-facet logic is always AND; within-facet logic is OR by default, configurable to AND via `data-etchfacet-logic`.
 - **`EtchFacets_Ajax_Handler`** — Registers `wp_ajax_etchfacets_filter` and `wp_ajax_etchfacets_map`. Verifies nonce, reads JSON POST body, orchestrates query + count calculation.
 - **`EtchFacets_Count_Calculator`** — Direct SQL for performance; does not use `WP_Query` for the count step.
+
+### Accessibility conventions (since 0.6.0)
+
+The JS adds accessible names, states and a `role="status"` result announcement to hand-built Etch markup, but never overrides a name the author set (`hasAccessibleName()` in `etchfacets.js`). Text the JS writes for screen readers comes from `etchfacetsConfig.i18n` (`etchfacets_js_config()` in `etchfacets.php`), never hard-coded English. Inside the Etch canvas (`isCanvas`), the JS hides nothing.
 - **`EtchFacets_Facet_Renderer`** — Registers shortcodes: `[etchfacets_listing]`, `[etchfacets_facet]`, `[etchfacets_reset]`, `[etchfacets_results_count]`, `[etchfacets_map]`. Also exposes `etchfacets_display()` PHP helper.
 
 ### Facet source types

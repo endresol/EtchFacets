@@ -12,14 +12,38 @@
 	transition: opacity 0.15s ease;
 }
 
-/* ── Ghost & hidden choices ── */
-.etchfacet-ghost {
-	opacity: 0.35;
-	pointer-events: none;
+/* ── Ghost & hidden choices ──
+   .etchfacet-ghost marks a choice that is at 0 only because of the OTHER
+   active facets. Its input is disabled, but the text stays fully readable
+   (no opacity: WCAG 1.4.3) so people can still see the option and its 0.
+   Style it further in your theme if you like, keeping contrast at 4.5:1.
+   .etchfacet-hidden is for choices with no posts at all. */
+.etchfacet-ghost,
+.etchfacet-ghost input {
+	cursor: not-allowed;
 }
 
 .etchfacet-hidden {
 	display: none !important;
+}
+
+/* ── "No results" message ── shown/hidden by JS via the hidden attribute;
+   !important so a theme display rule can't keep it on screen. */
+[data-etchfacets-no-results][hidden] {
+	display: none !important;
+}
+
+/* ── Screen-reader-only text (the result-count announcement) ── */
+.etchfacets-sr-only {
+	position: absolute !important;
+	width: 1px !important;
+	height: 1px !important;
+	padding: 0 !important;
+	margin: -1px !important;
+	overflow: hidden !important;
+	clip: rect(0, 0, 0, 0) !important;
+	white-space: nowrap !important;
+	border: 0 !important;
 }
 
 /* ── Collapsible facet — roll up/down animation ──

@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Plugin Name: EtchFacets
  * Description: Faceted search engine for EtchWP
- * Version: 0.5.0
+ * Version: 0.6.0
  * Author: Normadic Studio
  * Requires PHP: 8.1
  * Requires at least: 5.9
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ETCHFACETS_VERSION', '0.5.0' );
+define( 'ETCHFACETS_VERSION', '0.6.0' );
 define( 'ETCHFACETS_PLUGIN_FILE', __FILE__ );
 define( 'ETCHFACETS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETCHFACETS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -356,6 +356,50 @@ function etchfacets_filter_query( WP_Query $query ): void {
 	}
 }
 
+/**
+ * Config passed to etchfacets.js as `window.etchfacetsConfig`.
+ *
+ * `i18n` holds the text the script writes into the page for screen readers
+ * (result announcements, fallback control names). `%d` is the number and
+ * `%s` the facet/choice name.
+ *
+ * @param bool $is_canvas True inside the Etch editor canvas, where the script
+ *                        must not hide anything the author needs to edit
+ *                        (unused choices, the "no results" element).
+ * @return array
+ */
+function etchfacets_js_config( bool $is_canvas = false ): array {
+	$config = [
+		'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
+		'nonce'    => wp_create_nonce( 'etchfacets_nonce' ),
+		'isCanvas' => $is_canvas,
+		'i18n'    => [
+			/* translators: %d: number of results (exactly one). */
+			'resultsOne'    => __( '%d result', 'etchfacets' ),
+			/* translators: %d: number of results. */
+			'resultsMany'   => __( '%d results', 'etchfacets' ),
+			'noResults'     => __( 'No results found', 'etchfacets' ),
+			'search'        => __( 'Search', 'etchfacets' ),
+			/* translators: %s: facet name, e.g. "Price". */
+			'minimum'       => __( '%s, minimum', 'etchfacets' ),
+			/* translators: %s: facet name, e.g. "Price". */
+			'maximum'       => __( '%s, maximum', 'etchfacets' ),
+			/* translators: %s: active filter, e.g. "Topic: Guides". */
+			'remove'        => __( 'Remove %s', 'etchfacets' ),
+			/* translators: %s: parent choice name. */
+			'subcategories' => __( '%s subcategories', 'etchfacets' ),
+		],
+	];
+
+	/**
+	 * Filter the config passed to etchfacets.js, e.g. to change the
+	 * screen-reader text without a translation file.
+	 *
+	 * @param array $config The config array.
+	 */
+	return apply_filters( 'etchfacets/js_config', $config );
+}
+
 add_action( 'wp_enqueue_scripts', 'etchfacets_enqueue_assets' );
 
 /**
@@ -370,10 +414,7 @@ function etchfacets_enqueue_assets(): void {
 		true
 	);
 
-	wp_localize_script( 'etchfacets', 'etchfacetsConfig', [
-		'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-		'nonce'   => wp_create_nonce( 'etchfacets_nonce' ),
-	] );
+	wp_localize_script( 'etchfacets', 'etchfacetsConfig', etchfacets_js_config() );
 
 	wp_enqueue_style(
 		'etchfacets',
@@ -428,10 +469,7 @@ function etchfacets_canvas_assets(): void {
 		true
 	);
 
-	wp_localize_script( 'etchfacets', 'etchfacetsConfig', [
-		'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-		'nonce'   => wp_create_nonce( 'etchfacets_nonce' ),
-	] );
+	wp_localize_script( 'etchfacets', 'etchfacetsConfig', etchfacets_js_config( true ) );
 
 	wp_enqueue_style(
 		'etchfacets',

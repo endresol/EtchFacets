@@ -72,7 +72,7 @@ You have three options, in order of convenience:
 | `class`       | *(empty)*     | Extra CSS class on the wrapper.                        |
 | `post_type`   | *(empty)*     | For `taxonomy:`/`meta:` sources shared by more than one post type, scopes the choice list and counts to this post type. Leave empty only if the taxonomy/meta key belongs to a single post type. |
 | `hide_empty`  | `true`        | For `taxonomy:` sources, omit terms with zero matching posts (within `post_type`, if set) from the *initial* choice list. Set to `false` to always list every term from the start. |
-| `hide_empty_on_filter` | `false` | Whether a choice already in the list should be removed (vs. just dimmed via `.etchfacet-ghost`) once it drops to 0 matches because of a *different*, currently-active facet. Default keeps the choice list stable while other facets change. |
+| `hide_empty_on_filter` | `false` | Whether a choice already in the list should be removed (vs. shown with 0 and disabled via `.etchfacet-ghost`) once it drops to 0 matches because of a *different*, currently-active facet. Default keeps the choice list stable while other facets change. Choices with no posts at all are always hidden; see [Counts and ghost / hidden states](#counts-and-ghost--hidden-states). |
 
 ### 2. PHP helper
 
@@ -407,20 +407,60 @@ which inputs are present inside `[data-etchfacet]` and uses them.
 ### Counts and ghost / hidden states
 
 Add `<span class="etchfacet-count"></span>` inside each `<label>` and the JS
-will keep it in sync. When a choice would yield 0 results under the
-currently-active OTHER facets and is not itself selected, JS always applies
-`.etchfacet-ghost` (dimmed, non-interactive) so you can style it as
-unavailable — style this class however you like.
+will keep it in sync. Every count response also tells the JS each choice's
+`base_count`, its count with no facets applied at all, so a choice at 0 can be
+handled one of two ways:
 
-`.etchfacet-hidden` (`display: none`) is **opt-in only**, via
-`data-etchfacet-hide-empty="true"` on the facet's wrapper element (the
-`[etchfacets_facet]` shortcode exposes this as `hide_empty_on_filter="true"`).
-It defaults to off: a facet's choice list stays the same set of choices the
-whole time, regardless of what other facets are selected — only ghosting a
-choice, never removing it, so the list doesn't reflow or lose items out from
-under the user just because they toggled something in a different facet.
-Turn hiding on only if you specifically want choices to disappear once other
-active facets rule them out.
+| Situation | What happens |
+|---|---|
+| **Unused**: no post has this choice at all (`base_count` is 0) | Hidden with `.etchfacet-hidden`. Opt out with `data-etchfacet-hide-unused="false"` on the facet wrapper. |
+| **Filtered out**: the choice has posts, but none left under the OTHER active facets | Stays visible and readable, its count shows `0`, its label gets `.etchfacet-ghost` and its input is `disabled`, so it can't be picked into an empty result. |
+| The choice is **selected** | Never disabled or hidden, whatever its count, so it can always be unselected. |
+
+`.etchfacet-ghost` only sets `cursor: not-allowed` by default. The text keeps
+full contrast (WCAG 1.4.3); if you dim it in your theme, keep it at 4.5:1 or
+more. Dropdown `<option>`s follow the same rules (`disabled` / `hidden`).
+
+To also hide **filtered-out** choices, set `data-etchfacet-hide-empty="true"`
+on the facet wrapper (the `[etchfacets_facet]` shortcode exposes this as
+`hide_empty_on_filter="true"`). It defaults to off, so the choice list doesn't
+reflow or lose items just because the user toggled a different facet.
+
+Nothing is hidden inside the Etch editor canvas, so every choice stays editable.
+
+### Accessibility built in
+
+The JS fills in what hand-built markup most often misses. It never overrides a
+name the author already gave an element.
+
+- **Collapsible toggles** (`.etchfacets-facet-toggle`) with only an icon are
+  named after the facet's `.etchfacets-facet-label` (or first heading) through
+  `aria-labelledby`, and get `aria-expanded` / `aria-controls`.
+- **Search boxes, dropdowns and range inputs** without a label get one: the
+  facet label, else the placeholder (search), else "Search". Range inputs get
+  "Price, minimum" / "Price, maximum".
+- **Tree +/− toggles** get `aria-label="Design subcategories"`, `aria-controls`
+  and `aria-expanded`.
+- **Result announcements**: after each filter change a visually hidden
+  `role="status"` region announces "12 results" or "No results found".
+- **Group names** for chips and fallback labels come from `data-etchfacet-label`
+  if set, else the `.etchfacets-facet-label` text or first heading, else the
+  facet name made readable (`policy-instruments` → "Policy instruments").
+
+All of this text is translatable (text domain `etchfacets`) and can be changed
+with the `etchfacets/js_config` filter (see PLUGIN_REFERENCE.md).
+
+### "No results" message
+
+Put an element with `data-etchfacets-no-results` anywhere in the facet
+instance, **outside** `.etchfacets-template` (whose content gets replaced). The
+JS shows it only while the filtered result count is 0:
+
+```html
+<p data-etchfacets-no-results>No resources match these filters.</p>
+```
+
+It stays visible in the Etch editor so you can edit it.
 
 ---
 

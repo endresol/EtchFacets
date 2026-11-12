@@ -67,24 +67,91 @@ class EtchFacets_Count_Calculator {
 			// other active facet — get_post_ids_excluding() already excludes
 			// only $facet_name itself, so a geo selection elsewhere in $facets
 			// naturally carries through.
-			$post_ids = $this->get_post_ids_excluding( $facet_name, $facets, $sources, $logic, $base_args );
-
-			switch ( $source['type'] ) {
-				case 'taxonomy':
-					$counts[ $facet_name ] = $this->calculate_taxonomy_counts( $source['value'], $post_ids );
-					break;
-
-				case 'meta':
-					$counts[ $facet_name ] = $this->calculate_meta_counts( $source['value'], $post_ids );
-					break;
-
-				default:
-					$counts[ $facet_name ] = [];
-					break;
+			if ( ! in_array( $source['type'], [ 'taxonomy', 'meta' ], true ) ) {
+				$counts[ $facet_name ] = [];
+				continue;
 			}
+
+			$post_ids = $this->get_post_ids_excluding( $facet_name, $facets, $sources, $logic, $base_args );
+			$filtered = $this->calculate_choice_counts( $source, $post_ids );
+
+			// Each choice also carries a `base_count`: its count with NO facet
+			// selections applied at all. The frontend uses it to tell apart a
+			// choice that has no posts whatsoever (hidden) from one that is
+			// only at 0 because of what the user picked in OTHER facets
+			// (kept visible, showing 0, but not selectable). When no other
+			// facet is active, $post_ids already IS the unfiltered set, so
+			// the second query is skipped.
+			$other_facets_active = ! empty( array_diff_key( $facets, [ $facet_name => true ] ) );
+
+			if ( $other_facets_active ) {
+				if ( null === $all_post_ids ) {
+					$all_post_ids = $this->get_all_post_ids( $base_args );
+				}
+				$base = $this->calculate_choice_counts( $source, $all_post_ids );
+			} else {
+				$base = $filtered;
+			}
+
+			$counts[ $facet_name ] = $this->merge_base_counts( $filtered, $base );
 		}
 
 		return $counts;
+	}
+
+	/**
+	 * Count a taxonomy/meta facet's choices among a set of posts.
+	 *
+	 * @param array $source   Parsed source (['type' => ..., 'value' => ...]).
+	 * @param array $post_ids Post IDs to count within.
+	 * @return array Array of ['value' => ..., 'label' => ..., 'count' => N].
+	 */
+	private function calculate_choice_counts( array $source, array $post_ids ): array {
+		return 'taxonomy' === $source['type']
+			? $this->calculate_taxonomy_counts( $source['value'], $post_ids )
+			: $this->calculate_meta_counts( $source['value'], $post_ids );
+	}
+
+	/**
+	 * Combine filtered counts with unfiltered (base) counts.
+	 *
+	 * Every choice known to the base set is returned, with `count` 0 when it
+	 * is missing from the filtered set. That matters on its own: the count
+	 * queries return nothing at all when the other active facets leave no
+	 * posts (or, for meta, omit values with no matches), and updateCounts()
+	 * in etchfacets.js only touches choices present in the response, so a
+	 * missing choice used to keep a stale nonzero count on screen.
+	 *
+	 * @param array $filtered Counts under the other active facets.
+	 * @param array $base     Counts with no facets applied.
+	 * @return array Array of ['value', 'label', 'count', 'base_count'].
+	 */
+	private function merge_base_counts( array $filtered, array $base ): array {
+		$filtered_by_value = [];
+		foreach ( $filtered as $choice ) {
+			$filtered_by_value[ (string) $choice['value'] ] = $choice;
+		}
+
+		$merged = [];
+		foreach ( $base as $choice ) {
+			$value    = (string) $choice['value'];
+			$merged[] = [
+				'value'      => $choice['value'],
+				'label'      => $choice['label'],
+				'count'      => isset( $filtered_by_value[ $value ] ) ? $filtered_by_value[ $value ]['count'] : 0,
+				'base_count' => $choice['count'],
+			];
+			unset( $filtered_by_value[ $value ] );
+		}
+
+		// Can't normally happen (the filtered set is a subset of the base
+		// set), but never drop a choice that has posts.
+		foreach ( $filtered_by_value as $choice ) {
+			$choice['base_count'] = $choice['count'];
+			$merged[]             = $choice;
+		}
+
+		return $merged;
 	}
 
 	/**

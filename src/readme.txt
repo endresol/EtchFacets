@@ -4,7 +4,7 @@ Tags: facets, faceted-search, etch, etchwp, search
 Requires at least: 5.9
 Tested up to: 6.9.4
 Requires PHP: 8.1
-Stable tag: 0.4.1
+Stable tag: 0.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,6 +23,59 @@ URL-driven state.
 2. Activate it from the Plugins screen.
 
 == Changelog ==
+
+= 0.6.0 =
+Accessibility fixes from a WCAG 2.2 audit of a live site. No markup changes
+are needed; existing facets pick these up automatically.
+* Change: a choice with no posts at all is now hidden. A choice that is at 0
+  only because of the other active facets stays visible and readable with its
+  count showing 0, but its input is disabled so it can't be picked into an
+  empty result. Selected choices are never disabled or hidden. Opt out of
+  hiding unused choices with `data-etchfacet-hide-unused="false"`.
+* Change: `.etchfacet-ghost` no longer fades the choice to 35% opacity
+  (about 1.3:1 contrast) or blocks pointer events; it now only sets
+  `cursor: not-allowed`, and the input itself is disabled.
+* Add: each choice in the count response carries `base_count`, its count with
+  no facets applied.
+* Fix: counts went stale when the other active facets left no posts at all, or
+  for meta values with no matches, because those choices were missing from the
+  response. Every known choice is now returned, with 0 where it has none.
+* Add: icon-only collapsible facet toggles are named after the facet label
+  (`aria-labelledby`), so screen readers say "Policy instruments, button,
+  collapsed" instead of just "button".
+* Add: after each filter change a visually hidden `role="status"` region
+  announces the result count ("12 results" / "No results found").
+* Add: `data-etchfacets-no-results` element, shown only while the filtered
+  result count is 0.
+* Add: search boxes, dropdowns and range inputs without a label get an
+  accessible name (facet label, placeholder, or "Search"); the shortcode
+  search input now has an `aria-label`.
+* Add: tree +/- toggles get `aria-label` ("Design subcategories"),
+  `aria-controls` and `aria-expanded`.
+* Fix: active-filter chips and their remove buttons used the technical facet
+  key ("policy-instruments") when the group name wasn't a heading. They now
+  use `data-etchfacet-label`, the `.etchfacets-facet-label` text, or a
+  readable version of the key.
+* Fix: a count response arriving late could overwrite newer counts.
+* Add: `etchfacets/js_config` filter, and translatable screen-reader text.
+
+= 0.5.0 =
+* Fix: collapsed facet choice lists stayed in the Tab order. The list is now
+  `inert` while closed (with a tabindex fallback).
+* Add: collapsible facet toggles get `role="button"`, `tabindex="0"` and
+  `aria-controls` when they aren't native controls, and support Enter/Space
+  and ArrowDown/ArrowUp.
+
+= 0.4.3 =
+* Fix: logged-in editors saw draft/pending/private posts in AJAX counts and
+  pagination totals (admin-ajax runs with `is_admin()` true), causing an empty
+  last page. All queries are now `post_status = publish`, filterable via
+  `etchfacets/query/post_status`.
+
+= 0.4.2 =
+* Fix: `total`, `max_pages` and `grand_total` could be inflated when a
+  multi-term tax_query or multi-value meta_query joined a post more than once.
+  They are now counted from de-duplicated post IDs.
 
 = 0.4.1 =
 * Fix: paginating past page 1 on a listing whose `data-etchfacets-posts-per-page`

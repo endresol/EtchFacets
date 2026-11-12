@@ -34,6 +34,129 @@
 		};
 	}
 
+	// -------------------------------------------------------------------------
+	// Shared helpers: translated text, element ids, accessible names
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Translated text from etchfacetsConfig.i18n (see etchfacets_js_config()
+	 * in etchfacets.php), with an English fallback. The first `%s`/`%d` is
+	 * replaced with `value` when given.
+	 */
+	function t(key, fallback, value) {
+		const i18n = (window.etchfacetsConfig && window.etchfacetsConfig.i18n) || {};
+		const text = i18n[key] || fallback;
+		return value === undefined ? text : text.replace(/%[sd]/, String(value));
+	}
+
+	let uid = 0;
+
+	/** Give `el` an id if it has none, and return it. */
+	function ensureId(el, prefix) {
+		if (!el.id) el.id = `${prefix}-${++uid}`;
+		return el.id;
+	}
+
+	/** "policy-instruments" → "Policy instruments". Last-resort label only. */
+	function humanizeFacetName(name) {
+		const text = String(name || '').replace(/[-_]+/g, ' ').trim();
+		return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+	}
+
+	/**
+	 * The element holding a facet's visible group name: the
+	 * `.etchfacets-facet-label` element (used by the shortcode and the
+	 * "Facet - Checkboxes" component), or else the facet's first heading.
+	 */
+	function facetLabelElement(facetEl) {
+		const el = facetEl.querySelector('.etchfacets-facet-label') || facetEl.querySelector('h2, h3, h4, h5, h6');
+		return el && el.textContent.trim() ? el : null;
+	}
+
+	/**
+	 * A facet's human-readable group name, for chips and fallback control
+	 * names. Order: an explicit `data-etchfacet-label` attribute, the
+	 * visible label element, then the facet name made readable — never the
+	 * raw technical key on its own.
+	 */
+	function facetLabelText(facetEl) {
+		const explicit = (facetEl.getAttribute('data-etchfacet-label') || '').trim();
+		if (explicit) return explicit;
+		const el = facetLabelElement(facetEl);
+		if (el) return el.textContent.trim();
+		return humanizeFacetName(facetEl.getAttribute('data-etchfacet'));
+	}
+
+	/**
+	 * Whether `el` already has an accessible name the author gave it:
+	 * aria-label, a non-empty aria-labelledby target, a title, a <label>
+	 * (form controls), or visible text / image alt text (buttons). Icon-only
+	 * content (SVG, aria-hidden parts) doesn't count.
+	 */
+	function hasAccessibleName(el) {
+		if ((el.getAttribute('aria-label') || '').trim()) return true;
+		if ((el.getAttribute('title') || '').trim()) return true;
+
+		const labelledby = (el.getAttribute('aria-labelledby') || '').trim();
+		if (labelledby && labelledby.split(/\s+/).some((id) => {
+			const ref = document.getElementById(id);
+			return ref && ref.textContent.trim();
+		})) {
+			return true;
+		}
+
+		if (el.labels && Array.from(el.labels).some((label) => label.textContent.trim())) return true;
+
+		if (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) return false;
+
+		const clone = el.cloneNode(true);
+		clone.querySelectorAll('[aria-hidden="true"], svg, style, script').forEach((n) => n.remove());
+		const alts = Array.from(clone.querySelectorAll('img[alt]')).map((img) => img.alt).join(' ');
+		return `${clone.textContent} ${alts}`.trim() !== '';
+	}
+
+	/**
+	 * Name a facet's search box, dropdown and range inputs when the author
+	 * left them without one. A placeholder is not a name (it disappears while
+	 * typing and isn't reliably announced), so a search box with only a
+	 * placeholder gets that text as its aria-label. Author-provided names are
+	 * never overridden.
+	 */
+	function ensureControlNames(facetEl) {
+		const labelEl = facetLabelElement(facetEl);
+		const explicit = (facetEl.getAttribute('data-etchfacet-label') || '').trim();
+		const label = facetLabelText(facetEl);
+
+		const nameFromGroup = (control, fallback) => {
+			if (!explicit && labelEl && !labelEl.contains(control)) {
+				control.setAttribute('aria-labelledby', ensureId(labelEl, 'etchfacets-label'));
+			} else {
+				control.setAttribute('aria-label', explicit || fallback);
+			}
+		};
+
+		facetEl.querySelectorAll('input[type="search"], input[type="text"]').forEach((input) => {
+			if (input.classList.contains('etchfacet-min') || input.classList.contains('etchfacet-max')) return;
+			if (hasAccessibleName(input)) return;
+			if (!explicit && !labelEl && (input.placeholder || '').trim()) {
+				input.setAttribute('aria-label', input.placeholder.trim());
+				return;
+			}
+			nameFromGroup(input, t('search', 'Search'));
+		});
+
+		facetEl.querySelectorAll('select').forEach((select) => {
+			if (!hasAccessibleName(select)) nameFromGroup(select, label);
+		});
+
+		facetEl.querySelectorAll('.etchfacet-min').forEach((input) => {
+			if (!hasAccessibleName(input)) input.setAttribute('aria-label', t('minimum', '%s, minimum', label));
+		});
+		facetEl.querySelectorAll('.etchfacet-max').forEach((input) => {
+			if (!hasAccessibleName(input)) input.setAttribute('aria-label', t('maximum', '%s, maximum', label));
+		});
+	}
+
 	/**
 	 * Wire up the optional collapse/expand toggle on facets with
 	 * `data-etchfacet-collapsible="true"` (the "Facet - Checkboxes" component's
@@ -52,11 +175,12 @@
 	 *   - the choice list is pulled out of the tab order (`inert`, with a
 	 *     manual tabindex fallback for browsers without it) while closed,
 	 *     so Tab skips straight over it instead of stepping through every
-	 *     checkbox of a section the user can't even see.
+	 *     checkbox of a section the user can't even see;
+	 *   - an icon-only toggle (no text of its own) is named after the
+	 *     facet's group label via aria-labelledby, so a screen reader says
+	 *     "Policy instruments, button, collapsed" instead of just "button".
 	 */
 	function initCollapsibleFacets() {
-		let autoId = 0;
-
 		document.querySelectorAll('[data-etchfacet-collapsible="true"]').forEach((facetEl) => {
 			const toggle = facetEl.querySelector('.etchfacets-facet-toggle');
 			const choices = facetEl.querySelector('.etchfacets-facet-choices');
@@ -76,8 +200,16 @@
 				if (!toggle.hasAttribute('tabindex')) toggle.tabIndex = 0;
 			}
 
-			if (!choices.id) choices.id = `etchfacets-choices-${++autoId}`;
-			toggle.setAttribute('aria-controls', choices.id);
+			toggle.setAttribute('aria-controls', ensureId(choices, 'etchfacets-choices'));
+
+			if (!hasAccessibleName(toggle)) {
+				const labelEl = facetLabelElement(facetEl);
+				if (labelEl && !labelEl.contains(toggle)) {
+					toggle.setAttribute('aria-labelledby', ensureId(labelEl, 'etchfacets-label'));
+				} else {
+					toggle.setAttribute('aria-label', facetLabelText(facetEl));
+				}
+			}
 
 			// Every focusable descendant's tabindex as it was before we
 			// started forcing it to -1 while closed, so reopening restores
@@ -202,6 +334,7 @@
 		}
 
 		initCollapsibleFacets();
+		document.querySelectorAll('[data-etchfacet]').forEach(ensureControlNames);
 
 		// ---------------------------------------------------------------------
 		// Public API — instance-aware, defaults to 'main' so existing
@@ -301,6 +434,54 @@
 		const totalElements = scopedQueryAll('[data-etchfacets-total]');
 		const grandTotalElements = scopedQueryAll('[data-etchfacets-grand-total]');
 		const activeFiltersContainer = scopedQueryOne('[data-etchfacets-active-filters]');
+
+		// Inside the Etch editor canvas the author must be able to see and
+		// edit everything, so nothing is hidden there (see isCanvas in
+		// etchfacets_js_config()).
+		const isCanvas = !!(window.etchfacetsConfig && window.etchfacetsConfig.isCanvas);
+
+		// Optional author-built "nothing matches" message(s), shown only while
+		// the filtered result count is 0. Hidden until the first count
+		// response says otherwise.
+		const noResultsElements = scopedQueryAll('[data-etchfacets-no-results]');
+		if (!isCanvas) noResultsElements.forEach((el) => { el.hidden = true; });
+
+		// Screen-reader announcement of the result count after each filter
+		// change (WCAG 4.1.3). Visually hidden, created once at start-up —
+		// a live region must already be in the page before its text changes
+		// or most screen readers ignore it. Appended to <body> rather than
+		// next to the listing so it never lands inside markup the page
+		// builder manages.
+		const statusEl = document.createElement('div');
+		statusEl.className = 'etchfacets-sr-only etchfacets-status';
+		statusEl.setAttribute('role', 'status');
+		statusEl.setAttribute('aria-live', 'polite');
+		statusEl.setAttribute('aria-atomic', 'true');
+		document.body.appendChild(statusEl);
+
+		let announceTimer = null;
+		function announce(message) {
+			// Clear first, then set after a beat, so the same text twice in a
+			// row ("3 results" → "3 results") is still announced.
+			statusEl.textContent = '';
+			clearTimeout(announceTimer);
+			announceTimer = setTimeout(() => { statusEl.textContent = message; }, 150);
+		}
+
+		function resultsMessage(total) {
+			if (total === 0) return t('noResults', 'No results found');
+			if (total === 1) return t('resultsOne', '%d result', total);
+			return t('resultsMany', '%d results', total);
+		}
+
+		// Set when the user changes the filters; the next count response
+		// announces the new total. Never set for the initial page load.
+		let announcePending = false;
+		let ready = false;
+
+		// Only the newest count request may update the page — an older one
+		// that resolves late would otherwise overwrite fresher counts.
+		let countsSeq = 0;
 
 		// Facets (keyed by their [data-etchfacet] container) whose range/slider/
 		// date inputs the user has genuinely dragged/typed into. This is
@@ -468,12 +649,59 @@
 		// Count updates
 		// ---------------------------------------------------------------------
 
+		/**
+		 * Disable/enable a choice's input or <option>, remembering which ones
+		 * WE disabled so we never re-enable something the author disabled.
+		 */
+		function setChoiceDisabled(control, disabled) {
+			if (disabled) {
+				if (!control.disabled) {
+					control.disabled = true;
+					control.dataset.etchfacetsDisabled = '1';
+				}
+			} else if (control.dataset.etchfacetsDisabled) {
+				control.disabled = false;
+				delete control.dataset.etchfacetsDisabled;
+			}
+		}
+
+		/** Same as setChoiceDisabled(), for the `hidden` property. */
+		function setChoiceHidden(control, hidden) {
+			if (hidden) {
+				if (!control.hidden) {
+					control.hidden = true;
+					control.dataset.etchfacetsHidden = '1';
+				}
+			} else if (control.dataset.etchfacetsHidden) {
+				control.hidden = false;
+				delete control.dataset.etchfacetsHidden;
+			}
+		}
+
+		/**
+		 * Zero-count choices come in two kinds, told apart by `base_count`
+		 * (the choice's count with no facets applied at all):
+		 *
+		 *   - Unused: base_count is 0, no post has this choice whatsoever.
+		 *     Hidden (opt out with data-etchfacet-hide-unused="false").
+		 *   - Filtered out: count is 0 only because of what's selected in
+		 *     OTHER facets. Kept visible and readable, showing 0, marked
+		 *     .etchfacet-ghost and disabled so it can't be picked into an
+		 *     empty result. data-etchfacet-hide-empty="true" hides these too.
+		 *
+		 * A choice the user has selected is never disabled or hidden, so it
+		 * can always be unselected.
+		 */
 		function updateCounts(counts) {
 			if (!counts) return;
 
 			for (const [name, choices] of Object.entries(counts)) {
 				const facetEl = findFacetEl(name);
 				if (!facetEl) continue;
+
+				// Nothing is hidden inside the editor canvas.
+				const hideEmpty = !isCanvas && facetEl.dataset.etchfacetHideEmpty === 'true';
+				const hideUnused = !isCanvas && facetEl.dataset.etchfacetHideUnused !== 'false';
 
 				// meta_range facets return { min, max } bounds, not a choices array —
 				// sync the range/slider inputs' bounds and move on. Leaving this
@@ -512,6 +740,10 @@
 				choices.forEach((choice) => {
 					if (choice.value === undefined) return;
 
+					// base_count is absent only from a pre-0.6.0 server
+					// response; treat the choice as used then.
+					const unusedChoice = typeof choice.base_count === 'number' && choice.base_count === 0;
+
 					// --- Checkboxes / Radios ---
 					const input = facetEl.querySelector(
 						`input[type="checkbox"][value="${CSS.escape(choice.value)}"], input[type="radio"][value="${CSS.escape(choice.value)}"]`
@@ -534,31 +766,16 @@
 								: String(choice.count);
 						}
 
+						// See the comment above updateCounts() for the rules.
+						const empty = choice.count === 0 && !input.checked;
+						const hidden = empty && ((hideUnused && unusedChoice) || hideEmpty);
+
+						setChoiceDisabled(input, empty);
+
 						const label = input.closest('label');
 						if (label) {
-							if (choice.count === 0 && !input.checked) {
-								label.classList.add('etchfacet-ghost');
-							} else {
-								label.classList.remove('etchfacet-ghost');
-							}
-
-							// Actually removing a zero-count choice from view is
-							// opt-in (data-etchfacet-hide-empty="true" on the
-							// facet wrapper) and off by default — the choice list
-							// is otherwise expected to stay stable while other
-							// facets are toggled. A choice hitting 0 under the
-							// current combination of OTHER active facets doesn't
-							// mean it's gone forever; hiding it there makes the
-							// list reflow and choices vanish out from under the
-							// user just for selecting something unrelated.
-							// etchfacet-ghost (dimmed, disabled) still applies
-							// unconditionally above to signal "not selectable
-							// right now" without removing it from the list.
-							if (facetEl.dataset.etchfacetHideEmpty === 'true' && choice.count === 0 && !input.checked) {
-								label.classList.add('etchfacet-hidden');
-							} else {
-								label.classList.remove('etchfacet-hidden');
-							}
+							label.classList.toggle('etchfacet-ghost', empty);
+							label.classList.toggle('etchfacet-hidden', hidden);
 						}
 						return;
 					}
@@ -577,6 +794,13 @@
 						// Strip any existing count from the label, then append.
 						const baseText = option.textContent.replace(/\s*\(\d+\)$/, '');
 						option.textContent = `${baseText} (${choice.count})`;
+					}
+
+					// Same zero-count rules as checkboxes/radios above.
+					if (option) {
+						const empty = choice.count === 0 && !option.selected;
+						setChoiceDisabled(option, empty);
+						setChoiceHidden(option, empty && ((hideUnused && unusedChoice) || hideEmpty));
 					}
 				});
 			}
@@ -608,14 +832,12 @@
 		}
 
 		/**
-		 * A facet's own heading (e.g. "Topic"), used to prefix its value chips
-		 * so "Guides" reads as "Topic: Guides". Falls back to the facet name
-		 * when the facet has no heading element of its own.
+		 * A facet's group name (e.g. "Topic"), used to prefix its value chips
+		 * so "Guides" reads as "Topic: Guides". See facetLabelText() for the
+		 * lookup order; it never falls back to the raw facet key.
 		 */
-		function facetGroupLabel(facetEl, facetName) {
-			const heading = facetEl.querySelector('h2, h3, h4, h5, h6');
-			const text = heading ? heading.textContent.trim() : '';
-			return text || facetName;
+		function facetGroupLabel(facetEl) {
+			return facetLabelText(facetEl);
 		}
 
 		/**
@@ -661,8 +883,7 @@
 				// doesn't belong in a list of things the user can "remove".
 				if (facetEl.getAttribute('data-etchfacet-source') === 'sort') return;
 
-				const facetName = facetEl.getAttribute('data-etchfacet');
-				const groupLabel = facetGroupLabel(facetEl, facetName);
+				const groupLabel = facetGroupLabel(facetEl);
 
 				// Checkboxes
 				facetEl.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
@@ -738,7 +959,7 @@
 				const removeBtn = document.createElement('button');
 				removeBtn.type = 'button';
 				removeBtn.className = 'etchfacets-active-filter-remove';
-				removeBtn.setAttribute('aria-label', `Remove ${chip.text}`);
+				removeBtn.setAttribute('aria-label', t('remove', 'Remove %s', chip.text));
 				removeBtn.textContent = '×';
 				removeBtn.addEventListener('click', chip.remove);
 
@@ -930,6 +1151,7 @@
 
 		function fetchResults(page = 1) {
 			currentPage = page;
+			if (ready) announcePending = true;
 
 			// Reflect the current facet UI state immediately — no need to wait
 			// for the request to resolve, since chips are read straight from
@@ -1019,18 +1241,32 @@
 			formData.append('query_context', JSON.stringify(baseQuery));
 			formData.append('group', group);
 
+			const seq = ++countsSeq;
+
 			fetch(config.ajaxUrl || '', {
 				method: 'POST',
 				body: formData,
 			})
 				.then((res) => res.json())
 				.then((response) => {
+					if (seq !== countsSeq) return;
 					if (response.success === true) {
 						updateCounts(response.data.counts);
+
+						const total = Number(response.data.total) || 0;
 
 						totalElements.forEach((el) => {
 							el.textContent = response.data.total;
 						});
+
+						if (!isCanvas) {
+							noResultsElements.forEach((el) => { el.hidden = total !== 0; });
+						}
+
+						if (announcePending) {
+							announcePending = false;
+							announce(resultsMessage(total));
+						}
 
 						// Unlike totalElements, this never changes with facet
 						// selections — it's the listing's post type (plus any
@@ -1315,6 +1551,28 @@
 				if (facetEl.dataset.etchfacetsTreeInit) return;
 				facetEl.dataset.etchfacetsTreeInit = '1';
 
+				// The +/− toggles only show a symbol, so a screen reader would
+				// say "plus, button". Name each one after its parent choice
+				// ("Design subcategories") and link it to the list it opens.
+				facetEl.querySelectorAll('.etchfacets-tree-toggle').forEach((toggleBtn) => {
+					const treeItem = toggleBtn.closest('.etchfacets-tree-item');
+					const children = treeItem && treeItem.querySelector('.etchfacets-tree-children');
+					if (!children) return;
+
+					toggleBtn.setAttribute('aria-controls', ensureId(children, 'etchfacets-tree'));
+					if (!toggleBtn.hasAttribute('aria-expanded')) {
+						toggleBtn.setAttribute('aria-expanded', String(!children.hidden));
+					}
+
+					if (!(toggleBtn.getAttribute('aria-label') || '').trim()) {
+						const row = treeItem.querySelector('.etchfacets-tree-row') || treeItem;
+						const parentText = choiceLabelText(row.querySelector('label'), '');
+						if (parentText) {
+							toggleBtn.setAttribute('aria-label', t('subcategories', '%s subcategories', parentText));
+						}
+					}
+				});
+
 				facetEl.addEventListener('click', (e) => {
 					const toggleBtn = e.target.closest('.etchfacets-tree-toggle');
 					if (!toggleBtn) return;
@@ -1361,6 +1619,9 @@
 
 		// Reflect any URL-restored selections in the active-filters summary.
 		renderActiveFilters();
+
+		// From here on, filter changes come from the user and get announced.
+		ready = true;
 
 		// ---------------------------------------------------------------------
 		// Register this instance for the shared window.EtchFacets dispatcher
