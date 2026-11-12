@@ -96,8 +96,39 @@
       }
     });
 
+    // Footer: version + credit on the left, Close on the right.
+    const footer = document.createElement("div");
+    footer.style.cssText = [
+      "display:flex",
+      "align-items:center",
+      "justify-content:space-between",
+      "gap:24px",
+      "margin-top:16px",
+    ].join(";");
+
+    const meta = document.createElement("p");
+    meta.style.cssText = "margin:0;font-size:12px;line-height:1.5;color:#b4b4b4;";
+
+    const version = (window.etchfacetsBuilderConfig || {}).version;
+    if (version) {
+      meta.appendChild(document.createTextNode(`Version ${version} · `));
+    }
+
+    const credit = document.createElement("a");
+    credit.href = "https://normadicstudio.com/";
+    credit.target = "_blank";
+    credit.rel = "noopener";
+    credit.textContent = "Made by Normadic Studio";
+    credit.style.cssText = "color:#fff;text-decoration:underline;text-underline-offset:2px;";
+    meta.appendChild(credit);
+
+    closeBtn.style.marginTop = "0";
+
+    footer.appendChild(meta);
+    footer.appendChild(closeBtn);
+
     dialog.appendChild(title);
-    dialog.appendChild(closeBtn);
+    dialog.appendChild(footer);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
   }

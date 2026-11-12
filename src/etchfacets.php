@@ -501,6 +501,10 @@ function etchfacets_builder_assets(): void {
 		ETCHFACETS_VERSION,
 		true
 	);
+
+	wp_localize_script( 'etchfacets-builder', 'etchfacetsBuilderConfig', [
+		'version' => ETCHFACETS_VERSION,
+	] );
 }
 
 add_filter( 'etch_autocompletion_classes', 'etchfacets_register_classes' );
